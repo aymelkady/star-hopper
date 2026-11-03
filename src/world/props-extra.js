@@ -5,6 +5,7 @@
 import * as THREE from '../three.js';
 import { PAL } from './palette.js';
 import { solid as toon, named } from './materials.js';
+import { registerCamFader } from '../core/camera.js';
 
 // ---------- Grumble: slow patrol box with eyes ----------
 // opts: {id, zone, a:[x,z], b:[x,z], speed}
@@ -170,6 +171,9 @@ export function bell(P, x, y, z) {
   const pts = []; for (let i = 0; i <= 8; i++) { const t = i / 8; pts.push(new THREE.Vector2(0.25 + Math.pow(t, 2.2) * 0.95, -t * 1.6)); }
   const bm = new THREE.Mesh(new THREE.LatheGeometry(pts, 16), named(toon(PAL.bell, { emissive: PAL.bellEmissive, side: THREE.DoubleSide }), 'bell'));
   bm.castShadow = true; ent.pivot.add(bm);
+  // camera: fades to 30 % when the camera is within 2 m or the bell hides Pip; large = the camera
+  // pulls back and up when Pip stands under it (see core/camera.js)
+  ent.fader = registerCamFader({ name: 'bell', object: bm, mode: 'box', start: 2.6, end: 2.0, min: 0.3, occlude: true, large: true });
   P.col.add({ kind: 'cyl', x: x - 1.6, z, y0: y, y1: y + 4, r: 0.18 });
   P.col.add({ kind: 'cyl', x: x + 1.6, z, y0: y, y1: y + 4, r: 0.18 });
   P.scene.add(frame);

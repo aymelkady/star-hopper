@@ -1,8 +1,15 @@
 /*
  * Pip: a round little fox-bot built from primitives (sphere body, cone ears, capsule limbs, big
  * eyes, small tail, antenna).  Procedural poses driven by controller state + squash & stretch.
+ * Poses: run, air, long jump, triple-jump front flip, backflip (crouch + jump standing still),
+ * crouch (body squashed to 70 %, ears flat), ground pound.
+ * Pip registers itself as a camera fader: when the camera gets closer than 2.2 m to Pip's body it
+ * turns see-through (35 % at 1.2 m) so the player never gets a screen full of fur and tail.
  */
 import * as THREE from '../three.js';
+import { registerCamFader } from '../core/camera.js';
+
+const POSE = { crouchY: 0.7, crouchRate: 16, earFlat: -1.25, backflipSpin: 8.2 };
 
 let gradient = null;
 export function toonGradient() {
@@ -77,12 +84,27 @@ export function createPip() {
     new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false }));
   blob.rotation.x = -Math.PI / 2; blob.renderOrder = 1;
 
-  let sq = 1, sqV = 0, phase = 0, flip = 0, spin = 0, blink = 0, t = 0;
+  registerCamFader({ name: 'pip', object: root, mode: 'point', start: 2.2, end: 1.2, min: 0.35,
+    point: out => out.set(root.position.x, root.position.y + 0.72, root.position.z) });
+
+  let sq = 1, sqV = 0, phase = 0, flip = 0, spin = 0, blink = 0, t = 0, crouch = 0;
+  const _corr = new THREE.Vector3();
   const lerp = (a, b, k) => a + (b - a) * k;
 
   function update(dt, c, renderPos, groundY) {
     t += dt;
     root.position.copy(renderPos);
+    // Moving platforms are placed at the physics-step position, Pip at the interpolated one: put
+    // Pip back onto the platform's step position so the two never shimmer against each other.
+    const gc = c.grounded && c.groundCol;
+    if (gc && (gc.dx || gc.dy || gc.dz)) {
+      const p0 = c.prevPosition, p1 = c.position;
+      _corr.subVectors(p1, p0); const L2 = _corr.lengthSq();
+      if (L2 > 1e-10) {
+        const alpha = Math.max(0, Math.min(1, ((renderPos.x - p0.x) * _corr.x + (renderPos.y - p0.y) * _corr.y + (renderPos.z - p0.z) * _corr.z) / L2));
+        root.position.x += (1 - alpha) * gc.dx; root.position.y += (1 - alpha) * gc.dy; root.position.z += (1 - alpha) * gc.dz;
+      }
+    }
     // smooth yaw
     const d = Math.atan2(Math.sin(c.facing - root.rotation.y), Math.cos(c.facing - root.rotation.y));
     root.rotation.y += d * Math.min(1, dt * 18);
@@ -108,15 +130,20 @@ export function createPip() {
       armUp = rising ? 2.4 : 1.4; legTuck = rising ? 0.6 : 0.2;
       if (c.mode === 'longjump') { lean = 1.1; armUp = 2.8; legTuck = -0.6; }
       if (c.mode === 'jump' && c.tier === 3) flip = Math.min(Math.PI * 2, flip + dt * 11); // triple-jump front flip
+      if (c.mode === 'jump' && c.backflip) { flip = Math.max(-Math.PI * 2, flip - dt * POSE.backflipSpin); armUp = 2.6; legTuck = 0.9; }
     }
+    // crouch: squash to 70 %, ears flat, limbs tucked
+    crouch += ((c.crouching && !air ? 1 : 0) - crouch) * (1 - Math.exp(-POSE.crouchRate * dt));
+    if (crouch > 0.01) { legTuck += 0.5 * crouch; lean += 0.12 * crouch; bob *= 1 - crouch * 0.7; }
     if (c.mode === 'pound') { spin += dt * 30; legTuck = 1.2; armUp = 0.4; lean = 0; }
     if (c.mode === 'poundland') { armUp = 0.6; legTuck = 0.3; }
 
-    body.position.y = 0.72 * sq + bob;
+    const cy = 1 + (POSE.crouchY - 1) * crouch;  // body scale y 1 -> 0.7 while crouching
+    body.position.y = 0.72 * sq * cy + bob;
     body.rotation.set(lean + flip, 0, 0);
     body.rotation.y = c.mode === 'pound' && spin < Math.PI * 2 ? spin : 0;
     const w = 1 / Math.sqrt(sq);
-    body.scale.set(w, sq, w);
+    body.scale.set(w * (1 + 0.12 * crouch), sq * cy, w * (1 + 0.12 * crouch));
     armL.p.rotation.x = lerp(armL.p.rotation.x, armSwing - armUp, 0.4);
     armR.p.rotation.x = lerp(armR.p.rotation.x, -armSwing - armUp, 0.4);
     armL.p.rotation.z = lerp(armL.p.rotation.z, 0.25 + armUp * 0.15, 0.3);
@@ -125,7 +152,7 @@ export function createPip() {
     legR.p.rotation.x = lerp(legR.p.rotation.x, -legSwing - legTuck, 0.45);
     tailPivot.rotation.y = Math.sin(t * (3 + hs)) * 0.5;
     tailPivot.rotation.x = air ? -0.4 : 0;
-    ears[0].rotation.x = ears[1].rotation.x = -run * 0.4 + (air ? -0.3 : 0);
+    ears[0].rotation.x = ears[1].rotation.x = (-run * 0.4 + (air ? -0.3 : 0)) * (1 - crouch) + POSE.earFlat * crouch;
     ant.rotation.x = -run * 0.5 + Math.sin(t * 6) * 0.05;
     // blink
     blink -= dt;

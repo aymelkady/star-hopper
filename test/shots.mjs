@@ -1,7 +1,11 @@
 // Screenshot helper: node test/shots.mjs -> test/shots/*.png (+ draw-call report)
 // Captures the title, the classic zone views and the graphics vantage points from DESIGN.md §5.2:
 // treehouse top looking at the mountains, the Sky Towers summit looking out (both ways), the cove
-// beach, the meadow waterfall and a phone-size shot.
+// beach, the meadow waterfall and a phone-size shot.  Camera proofs: `close-wall` (Pip with its back
+// to a wall, camera pushed in: the camera rises instead of eating Pip's tail) and `bell` (standing
+// under the Sky Towers bell: the bell fades, the camera pulls back and up).
+// The quest card, toast and focus meter are hidden (el.hidden = true) for the art shots and restored
+// afterwards; pass a comma list to render only some shots: node test/shots.mjs cove,bell
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -27,7 +31,20 @@ const SPOTS = {
   'cove-beach': [34, 1, 12, Math.PI / 2 + 0.35],
   'meadow-waterfall': [-74, 1, 3, -Math.PI / 2],
   'meadow-hill': [HILLX(), 13, -22, 0.6],
+  'close-wall': [-37.6, 1, 20, Math.PI / 2],   // back 0.65 m from the 4 m meadow block's east face
+  bell: [1.3, 17.7, -94.2, 0.2],               // right under the summit bell
 };
+const OVERLAYS = ['#quest-card', '#toast', '#focus-meter'];
+async function hideOverlays(page) {
+  await page.evaluate(sel => {
+    for (const s of sel) { const el = document.querySelector(s); if (!el) continue; if (el.dataset.shotHidden === undefined) el.dataset.shotHidden = el.hidden ? '1' : '0'; el.hidden = true; }
+  }, OVERLAYS);
+}
+async function restoreOverlays(page) {
+  await page.evaluate(sel => {
+    for (const s of sel) { const el = document.querySelector(s); if (!el || el.dataset.shotHidden === undefined) continue; el.hidden = el.dataset.shotHidden === '1'; delete el.dataset.shotHidden; }
+  }, OVERLAYS);
+}
 function HILLX() { return -67; }
 
 async function open(browser, opts) {
@@ -42,8 +59,6 @@ async function open(browser, opts) {
 async function startPlay(page) {
   await page.evaluate(() => window.__game.start(3));
   await page.waitForFunction(() => window.__game.ready);
-  // hide DOM overlays that might cover the world (quest card etc.) for clean art shots
-  await page.evaluate(() => { for (const el of document.querySelectorAll('.quest-card, #quest-card, .toast, #toast')) el.style.display = 'none'; });
   await page.waitForTimeout(600);
 }
 async function goTo(page, [x, y, z, f]) {
@@ -63,25 +78,38 @@ const report = {};
   await page.waitForTimeout(900);
   if (!only || only.has('hub')) await page.screenshot({ path: shot('hub') });
   report.desktop = { hub: await page.evaluate(() => window.__game.drawCalls()) };
+  report.camera = {};
   for (const [name, spot] of Object.entries(SPOTS)) {
     if (only && !only.has(name)) continue;
     await goTo(page, spot);
+    await hideOverlays(page); // re-applied per shot: the HUD may un-hide them on its own updates
     await page.screenshot({ path: shot(name) });
     report.desktop[name] = await page.evaluate(() => window.__game.drawCalls());
+    report.camera[name] = await page.evaluate(() => {
+      const r = window.__game.camera, f = n => (r.fader(n) ? +r.fader(n).opacity.toFixed(2) : null);
+      return { dist: +r.distToFocus().toFixed(2), pitch: +(r.actualPitch * 180 / Math.PI).toFixed(1), pip: f('pip'), bell: f('bell') };
+    });
   }
+  await restoreOverlays(page);
   await ctx.close();
 }
 if (!only || only.has('phone')) { // phone 844x390 touch
   const { ctx, page } = await open(browser, { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
   await startPlay(page);
   await page.touchscreen.tap(422, 300); await page.waitForTimeout(500); // dismiss the how-to-move card
+  await hideOverlays(page);
   await page.screenshot({ path: shot('phone') });
+  await restoreOverlays(page);
   report.mobile = { hub: await page.evaluate(() => window.__game.drawCalls()) };
   for (const name of ['towers-summit', 'cove-beach']) { await goTo(page, SPOTS[name]); report.mobile[name] = await page.evaluate(() => window.__game.drawCalls()); }
   await goTo(page, SPOTS['hub-treetop']);
+  await hideOverlays(page);
   await page.screenshot({ path: shot('phone-treetop') });
+  await restoreOverlays(page);
   report.mobile['hub-treetop'] = await page.evaluate(() => window.__game.drawCalls());
   await ctx.close();
 }
-console.log('draw calls:', JSON.stringify(report));
+const { camera: camReport, ...draws } = report;
+console.log('draw calls:', JSON.stringify(draws));
+if (camReport && Object.keys(camReport).length) console.log('camera:', JSON.stringify(camReport));
 await browser.close();

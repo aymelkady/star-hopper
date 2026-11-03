@@ -2,11 +2,18 @@
  * Pip's kinematic controller: the whole moveset from DESIGN.md §2.
  * Collision shape = two stacked spheres (feet sphere + head sphere) swept in sub-steps against
  * CollisionWorld.  `position` is the FEET point.  Every feel number lives in TUNING.
+ *
+ * Crouch: actions.crouch.held (touch: swipe down on the ground, held) or the pound button held on
+ * the ground (keyboard Ctrl / C / X, gamepad X).  Crouched Pip walks at 45 % speed, a running crouch
+ * slides down to that speed, the capsule shrinks to 0.8 m (and only grows back with headroom).
+ * Crouch + jump: moving > 4 m/s = long jump, standing still = backflip (6.3 m apex, one spin).
+ * Emits player:crouch {on} whenever the crouch state changes.
  */
 import * as THREE from '../three.js';
 
 export const TUNING = {
   radius: 0.45, height: 1.3,        // collision spheres at y=r and y=height-r
+  crouchHeight: 0.8,                // capsule height while crouched (head sphere sinks onto the feet one)
   // --- running ---
   topSpeed: 9,                      // m/s (brief)
   runAccel: 40,                     // m/s² (brief) -> 0 to top speed in ~0.22 s
@@ -27,6 +34,12 @@ export const TUNING = {
   longJumpApex: 2.2, longJumpSpeed: 16, longJumpGravity: 0.6, longJumpMinSpeed: 3, // ≈1.7× distance
   poundHang: 0.18, poundSpeed: 32, poundLag: 0.25, poundRadius: 2,
   wallKickWindow: 0.2, wallKickApex: 4.5, wallKickPush: 9, wallKickLock: 0.22,
+  // --- crouch (DESIGN.md §5.1 swipe-down on the ground; Ctrl / C on keyboard) ---
+  crouchSpeed: 0.45,                // × topSpeed while crouched
+  crouchSlideDecel: 12,             // m/s² when crouching at run speed (keeps a long-jump window)
+  crouchLongJumpMinSpeed: 4,        // crouch + jump faster than this = long jump
+  backflipMaxSpeed: 1.5,            // crouch + jump slower than this = backflip
+  backflipApex: 6.3, backflipBack: 2.5, // apex m, backward drift m/s
   // --- helper mode (R6) ---
   coyote: 0.15, buffer: 0.15,
   // --- damage / respawn ---
@@ -48,12 +61,13 @@ export function createController({ col, events, state }) {
     sinceGround: 9, sinceJumpPress: 9, jumpedSinceGround: false, airTime: 0,
     wallTimer: 0, wallN: { x: 0, z: 0 }, airLock: 0, poundTimer: 0, lag: 0,
     bonks: 0, invuln: 0, time: 0, frozen: false, landImpact: 0, jumpImpulse: 0,
+    crouching: false, height: T.height, backflip: false,
     world: null,        // set by main: {windAt(pos), onPound(pos,r)}
   };
   const ev = (type, extra = {}) => events.emit(type, { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2), ...extra });
 
   function doJump(tier) {
-    c.tier = tier; c.mode = 'jump'; c.cut = false;
+    c.tier = tier; c.mode = 'jump'; c.cut = false; c.backflip = false;
     vel.y = jumpV(T.jumpApex[tier - 1]);
     c.grounded = false; c.jumpedSinceGround = true; c.sinceJumpPress = 9; c.jumpImpulse = 1;
     ev('player:jump', { tier });
@@ -64,8 +78,29 @@ export function createController({ col, events, state }) {
     vel.x = Math.sin(f) * sp; vel.z = Math.cos(f) * sp;
     vel.y = jumpV(T.longJumpApex, T.gravityUp * T.longJumpGravity);
     c.mode = 'longjump'; c.tier = 0; c.cut = true; c.grounded = false; c.jumpedSinceGround = true; c.sinceJumpPress = 9;
-    c.jumpImpulse = 0.6; c.lastJumpTier = 0;
+    c.jumpImpulse = 0.6; c.lastJumpTier = 0; c.backflip = false;
     ev('player:longjump');
+  }
+  // crouch + jump standing still: fixed-height backflip (no variable cut), drifts slightly backward
+  function doBackflip() {
+    const f = c.facing;
+    vel.x = -Math.sin(f) * T.backflipBack; vel.z = -Math.cos(f) * T.backflipBack;
+    vel.y = jumpV(T.backflipApex);
+    c.mode = 'jump'; c.tier = 0; c.cut = true; c.backflip = true; c.grounded = false; c.jumpedSinceGround = true;
+    c.sinceJumpPress = 9; c.jumpImpulse = 1; c.lastJumpTier = 0;
+    ev('player:jump', { tier: 2, backflip: true });
+    ev('player:backflip');
+  }
+  function setCrouch(on) {
+    if (c.crouching === on) return;
+    c.crouching = on;
+    ev('player:crouch', { on });
+  }
+  // Room for the full-height head sphere above the feet?
+  function headroom() {
+    col.sphereContacts(pos.x, pos.y + T.height - T.radius, pos.z, T.radius * 0.95, contacts);
+    for (const ct of contacts) if (ct.depth > 1e-3 && ct.ny < T.walkableNY) return false;
+    return true;
   }
 
   function groundMove(dt, dx, dz, mag) {
@@ -73,7 +108,7 @@ export function createController({ col, events, state }) {
     if (mag > 0.05) {
       const target = Math.atan2(dx, dz);
       const gn = c.groundNormal, uphill = Math.max(0, -(gn.x * dx + gn.z * dz)) / 0.77;
-      const top = T.topSpeed * mag * (1 - T.uphillSlow * Math.min(1, uphill));
+      let top = T.topSpeed * mag * (1 - T.uphillSlow * Math.min(1, uphill));
       let speed = hs;
       const diff = wrap(target - c.facing);
       if (c.skidding || (hs > 5 && Math.abs(diff) > T.skidAngle)) {
@@ -89,7 +124,8 @@ export function createController({ col, events, state }) {
         const rate = T.turnRateSlow + (T.turnRateFast - T.turnRateSlow) * t;
         c.facing = wrap(c.facing + Math.max(-rate * dt, Math.min(rate * dt, diff)));
       }
-      speed = speed < top ? Math.min(top, speed + T.runAccel * dt) : Math.max(top, speed - T.friction * dt);
+      if (c.crouching) top *= T.crouchSpeed;
+      speed = speed < top ? Math.min(top, speed + T.runAccel * dt) : Math.max(top, speed - (c.crouching ? T.crouchSlideDecel : T.friction) * dt);
       vel.x = Math.sin(c.facing) * speed; vel.z = Math.cos(c.facing) * speed;
     } else {
       c.skidding = false;
@@ -124,7 +160,7 @@ export function createController({ col, events, state }) {
     for (let iter = 0; iter < 4; iter++) {
       let moved = false;
       for (let k = 0; k < 2; k++) {
-        const oy = k === 0 ? T.radius : T.height - T.radius;
+        const oy = k === 0 ? T.radius : Math.max(T.radius, c.height - T.radius);
         col.sphereContacts(pos.x, pos.y + oy, pos.z, T.radius, contacts);
         for (const ct of contacts) {
           if (ct.depth < 1e-5) continue;
@@ -201,8 +237,18 @@ export function createController({ col, events, state }) {
       if (c.lag <= 0) c.mode = 'ground';
     } else if (c.mode === 'pound') {
       // spin in place, then drop fast
-    } else if (c.grounded) groundMove(dt, ix, iz, mag);
-    else airMove(dt, ix, iz, mag);
+    } else if (c.grounded) {
+      // crouch: touch swipe-down hold, or the pound button held while on the ground
+      const want = !!((a.crouch && a.crouch.held) || (a.pound && a.pound.held)) && c.mode === 'ground';
+      if (want) { setCrouch(true); c.height = T.crouchHeight; }
+      else if (c.height < T.height) { if (headroom()) { c.height = T.height; setCrouch(false); } else setCrouch(true); }
+      else setCrouch(false);
+      groundMove(dt, ix, iz, mag);
+    } else airMove(dt, ix, iz, mag);
+    if (!c.grounded || c.mode !== 'ground') {
+      setCrouch(false);
+      if (c.height < T.height && headroom()) c.height = T.height;
+    }
 
     // --- jump family ---
     const wantJump = c.sinceJumpPress <= (helper ? T.buffer : 0);
@@ -210,7 +256,9 @@ export function createController({ col, events, state }) {
     const hs = Math.hypot(vel.x, vel.z);
     if (c.mode !== 'poundland' && c.mode !== 'pound') {
       if ((c.grounded || coyoteOk) && (wantJump || (a.longJump.pressed && c.grounded && hs > T.longJumpMinSpeed))) {
-        if ((a.longJump.held || a.longJump.pressed) && hs > T.longJumpMinSpeed) doLongJump();
+        if (c.grounded && c.crouching && wantJump && hs > T.crouchLongJumpMinSpeed) doLongJump();
+        else if (c.grounded && c.crouching && wantJump && hs < T.backflipMaxSpeed) doBackflip();
+        else if ((a.longJump.held || a.longJump.pressed) && hs > T.longJumpMinSpeed) doLongJump();
         else {
           const combo = c.lastJumpTier > 0 && c.lastJumpTier < 3 && (c.time - c.lastLandTime) <= T.comboWindow && hs > T.comboMinSpeed;
           doJump(combo ? c.lastJumpTier + 1 : 1);
@@ -249,7 +297,7 @@ export function createController({ col, events, state }) {
     moveAndCollide(dt);
 
     if (c.grounded) {
-      c.sinceGround = 0; c.jumpedSinceGround = false;
+      c.sinceGround = 0; c.jumpedSinceGround = false; c.backflip = false;
       const g2 = c.groundCol;
       if (g2 && g2.bounce && prevMode !== 'poundland') {        // mushroom
         vel.y = jumpV(g2.bounce); c.mode = 'jump'; c.cut = true; c.grounded = false; c.tier = 1;
@@ -281,6 +329,7 @@ export function createController({ col, events, state }) {
   c.teleport = (x, y, z, facing) => {
     pos.set(x, y, z); prev.copy(pos); vel.set(0, 0, 0);
     c.mode = 'fall'; c.grounded = false; c.groundCol = null; c.airLock = 0; c.lastJumpTier = 0;
+    c.height = T.height; c.backflip = false; setCrouch(false);
     if (facing !== undefined) c.facing = facing;
   };
   // Enemy side-touch. Returns true when the bonk limit is reached (caller respawns).
@@ -289,12 +338,12 @@ export function createController({ col, events, state }) {
     c.bonks++;
     let dx = pos.x - fromX, dz = pos.z - fromZ; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
     vel.x = dx * T.knockback; vel.z = dz * T.knockback; vel.y = jumpV(T.knockApex);
-    c.mode = 'fall'; c.grounded = false; c.airLock = 0.35; c.invuln = T.hurtInvuln;
+    c.mode = 'fall'; c.grounded = false; c.airLock = 0.35; c.invuln = T.hurtInvuln; c.backflip = false;
     ev('player:hurt', { bonks: c.bonks, max: T.maxBonks });
     return c.bonks >= T.maxBonks;
   };
   c.bounceUp = apex => {
-    vel.y = jumpV(apex); c.mode = 'jump'; c.cut = false; c.tier = 1; c.grounded = false; c.jumpImpulse = 0.8;
+    vel.y = jumpV(apex); c.mode = 'jump'; c.cut = false; c.tier = 1; c.grounded = false; c.jumpImpulse = 0.8; c.backflip = false;
     ev('player:bounce', { apex });
   };
   c.isPounding = () => c.mode === 'pound';
