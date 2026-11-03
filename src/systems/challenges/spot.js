@@ -58,7 +58,7 @@ export function createSpot(kit, def) {
   for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2 + Math.PI / 2, r = k % 2 ? 0.07 : 0.17; k ? shp.lineTo(Math.cos(a) * r, Math.sin(a) * r) : shp.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
   const markGeo = new THREE.ExtrudeGeometry(shp, { depth: 0.03, bevelEnabled: false });
   const markMesh = new THREE.InstancedMesh(markGeo, kit.toon(0xffd84a, { emissive: 0x8a5a00, emissiveIntensity: 0.6 }, 'spot-mark'), COUNT);
-  markMesh.count = 0; scene.add(markMesh);
+  markMesh.count = 0; markMesh.frustumCulled = false; scene.add(markMesh); // instances move: no stale bounds
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _e = new THREE.Euler();
   const fwd = new THREE.Vector3(), dir = new THREE.Vector3();
   let markScale = 1, phase = 'idle', t = 0, found = 0, lastFind = 0, pingT = 0, helpMin = 0.8;

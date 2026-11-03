@@ -165,7 +165,8 @@ async function desktopPass(browser) {
   await page.waitForTimeout(300);
   t = await nowT(page);
   ok(await fp(page, 'debugFreeze()') === true && await waitEv(page, 'freeze:start', t, 1000), 'debugFreeze() -> freeze:start');
-  await page.waitForTimeout(1400);
+  await page.waitForFunction(`${FP}.freeze.phase === 'hold'`, null, { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(700);
   await page.screenshot({ path: shot('freeze') });
   const coins0 = await page.evaluate(() => window.__game.state.totalCoins());
   ok(await waitEv(page, 'freeze:success', t, 12000), 'standing still for 2 s -> freeze:success');
