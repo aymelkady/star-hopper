@@ -5,7 +5,8 @@
  * Save data shape (version 1):
  *   { version, slot, created, updated, stars:[ids], redCoins:{starId:[indices]},
  *     coins:{hub,meadow,cove,towers}, coinIds:[ids], checkpoint:{id,x,y,z,zone}|null,
- *     playTime (s), lastZone, settings:{...snapshot} }
+ *     playTime (s), lastZone, settings:{...snapshot},
+ *     focus:{levels:{type:1..5}, history:{type:[{hit,rt}]}, bursts, results:{starId:{won,fails,attempts,best}}} }
  */
 export const SLOT_COUNT = 3;
 const SAVE_KEY = n => `starhopper.save.${n}`;
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS = {
   focusMode: false,
   reduceMotion: false,
   haptics: true,          // touch-button vibration (navigator.vibrate)
+  freezeEnabled: true,    // focus-play: the random "Freeze!" game (systems/focusplay.js)
 };
 
 function store() {
@@ -43,6 +45,9 @@ export function freshSave(slot, settings) {
     version: 1, slot, created: now, updated: now,
     stars: [], redCoins: {}, coins: { hub: 0, meadow: 0, cove: 0, towers: 0 }, coinIds: [],
     checkpoint: null, playTime: 0, lastZone: 'hub', settings: { ...settings },
+    // focus-play (systems/focusplay.js): adaptivity levels 1..5 per challenge type, last 10
+    // responses per type, lifetime Focus Bursts, per-challenge-star results
+    focus: { levels: {}, history: {}, bursts: 0, results: {} },
   };
 }
 

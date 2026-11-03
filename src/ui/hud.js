@@ -7,7 +7,7 @@
  */
 const RED_STAR = { meadow: 'meadow-2', cove: 'cove-3', towers: 'towers-3' };
 
-export function createHud({ events, state, world, totalStars = 15 }) {
+export function createHud({ events, state, world, totalStars = 20 } /* focus-play: 15 + 5 challenge stars */) {
   const $ = id => document.getElementById(id);
   const el = { hud: $('hud'), stars: $('hud-stars'), coins: $('hud-coins'), red: $('hud-redcoins'), timer: $('hud-timer'), zone: $('hud-zone'), toast: $('toast') };
   const val = e => e.querySelector('.val');

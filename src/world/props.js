@@ -106,8 +106,9 @@ export function createProps({ scene, col, events, state }) {
     if (!c || !c.alive) return false;
     c.alive = false; c.popT = 0.35;
     if (c.type === 'coin') {
-      const zoneCoins = state.addCoin(c.id, c.zone, 1);
-      events.emit('pickup:coin', { id: c.id, value: 1, total: state.totalCoins(), zone: c.zone, zoneCoins });
+      const v = Math.max(1, P.coinMultiplier || 1); // focus-play: Focus Burst sets coinMultiplier = 2
+      const zoneCoins = state.addCoin(c.id, c.zone, v);
+      events.emit('pickup:coin', { id: c.id, value: v, total: state.totalCoins(), zone: c.zone, zoneCoins });
       if (zoneCoins >= 100 && c.zone !== 'hub') {
         const b = P.starById.get(`bonus-${c.zone}`);
         if (b && !b.revealed) P.revealStar(b, `100 coins! Bonus star!`);
@@ -121,6 +122,15 @@ export function createProps({ scene, col, events, state }) {
       else toast(`Red coin ${count} / 8`);
     }
     return true;
+  };
+
+  // focus-play: coins with no coin object (Freeze! coin shower); same events as a normal pickup
+  P.giftCoins = (n, zone) => {
+    if (!state.data || !(n > 0)) return 0;
+    const zc = (state.data.coins[zone] = (state.data.coins[zone] || 0) + n);
+    events.emit('pickup:coin', { id: `gift-${zone}`, value: n, total: state.totalCoins(), zone, zoneCoins: zc, gift: true });
+    if (zc >= 100 && zone !== 'hub') { const b = P.starById.get(`bonus-${zone}`); if (b && !b.revealed) P.revealStar(b, '100 coins! Bonus star!'); }
+    return zc;
   };
 
   // ---------- stars ----------

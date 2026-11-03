@@ -12,8 +12,9 @@ import * as focus from './systems/focus.js';
 import * as settings from './ui/settings.js';
 import * as fx from './systems/fx.js';
 import * as audio from './audio/audio.js';
+import * as focusplay from './systems/focusplay.js'; // focus-play (after objectives: it reads its API lazily)
 
-const PLUGINS = [objectives, breaks, focus, settings, fx, audio];
+const PLUGINS = [objectives, breaks, focus, settings, fx, audio, focusplay];
 
 export function initPlugins(ctx) {
   const out = {};

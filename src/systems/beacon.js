@@ -1,12 +1,17 @@
 /*
- * Objective beacon: a tall, soft, additive light column at the target + a chunky 3D arrow that
- * floats above Pip's head and yaws toward the target.  Exactly 2 draw calls (column + arrow).
+ * Objective beacon: a narrow (0.5 m), soft, additive light column AT the target (hidden within 3 m)
+ * + a small fixed-size (0.6 m) 3D arrow 1.5 m above Pip's head that yaws toward the target, hides
+ * within 4 m / during celebrations, and fades out whenever it would sit between camera and Pip.  Exactly 2 draw calls (column + arrow).
  * The column geometry holds a core and a thin outer "halo" shell; the halo is black (= invisible
  * with additive blending) until setFocus(true) brightens it, so focus mode adds no draw call.
  */
-const H = 70;             // column height (m)
+const H = 26;             // column height (m)
+const COL_HIDE = 3;       // hide the column when the target is closer than this to Pip (m)
+const COL_MAX_SCALE = 3;  // far-away widening cap (core radius 0.5 m -> at most 1.5 m)
 const ARROW_HIDE = 4;     // hide the arrow when the target is closer than this (m)
-const HEAD = 2.3;         // arrow height above Pip's feet (~1.3 m above the head)
+const PIP_HEAD = 1.1;     // top of Pip's head above its feet (m)
+const ARROW_UP = 1.5;     // arrow height above the head; 1.0 m when the camera looks down on Pip
+const ARROW_LEN = 0.6;    // fixed world length of the arrow (m), never scaled by distance
 
 function mergeIndexed(THREE, geos) {
   const pos = [], idx = []; let off = 0;
@@ -24,15 +29,17 @@ function mergeIndexed(THREE, geos) {
 
 export function createBeacon(THREE, scene) {
   // ---- column: core (0..coreCount) + halo shell ----
-  const core = new THREE.CylinderGeometry(0.75, 0.95, H, 24, 8, true);
-  const halo = new THREE.CylinderGeometry(1.3, 1.45, H, 24, 8, true);
+  const core = new THREE.CylinderGeometry(0.5, 0.5, H, 20, 12, true);
+  const halo = new THREE.CylinderGeometry(0.75, 0.75, H, 20, 12, true);
   const coreCount = core.attributes.position.count;
   const colGeo = mergeIndexed(THREE, [core, halo]);
   const n = colGeo.attributes.position.count;
   const colors = new Float32Array(n * 3);
   colGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   const gold = new THREE.Color(0xffd84a), white = new THREE.Color(0xfff6c8);
-  const fadeAt = i => { const y = colGeo.attributes.position.getY(i); const t = (y + H / 2) / H; return Math.pow(1 - t, 1.2); };
+  // soft at the base, bright "lamp" band near the top, short fade-out at the very top
+  const sstep = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+  const fadeAt = i => { const y = colGeo.attributes.position.getY(i); const t = (y + H / 2) / H; return (0.4 + 0.6 * sstep(0.45, 0.85, t)) * (1 - sstep(0.93, 1, t)); };
   function paint(focus) {
     for (let i = 0; i < n; i++) {
       const f = fadeAt(i);
@@ -63,8 +70,12 @@ export function createBeacon(THREE, scene) {
   const top = new THREE.Color(0xffe45a), side = new THREE.Color(0xd9661a), tmp = new THREE.Color();
   for (let i = 0; i < an.count; i++) { tmp.copy(side).lerp(top, Math.max(0, an.getY(i))); ac[i * 3] = tmp.r; ac[i * 3 + 1] = tmp.g; ac[i * 3 + 2] = tmp.b; }
   aGeo.setAttribute('color', new THREE.BufferAttribute(ac, 3));
-  const arrow = new THREE.Mesh(aGeo, new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }));
-  arrow.castShadow = false; arrow.renderOrder = 6; arrow.visible = false; arrow.scale.setScalar(0.9);
+  aGeo.computeBoundingBox();
+  const len = aGeo.boundingBox.max.z - aGeo.boundingBox.min.z;
+  aGeo.scale(ARROW_LEN / len, ARROW_LEN / len, ARROW_LEN / len);       // baked in: fixed world size
+  const arrowMat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, transparent: true, opacity: 1 });
+  const arrow = new THREE.Mesh(aGeo, arrowMat);
+  arrow.castShadow = false; arrow.renderOrder = 6; arrow.visible = false; arrow.matrixAutoUpdate = true;
   scene.add(arrow);
 
   // the arrow plane is turned toward the camera (around its pointing axis) so its shape always reads
@@ -80,6 +91,14 @@ export function createBeacon(THREE, scene) {
     basis.makeBasis(vX, vN, vD);
     arrow.quaternion.setFromRotationMatrix(basis);
   }
+  // distance from point p to the segment a-b (camera -> Pip)
+  const vA = new THREE.Vector3(), vB = new THREE.Vector3();
+  function segDist(p, a, b) {
+    vA.subVectors(b, a); vB.subVectors(p, a);
+    const L2 = vA.lengthSq(); const k = L2 > 0 ? Math.min(1, Math.max(0, vB.dot(vA) / L2)) : 0;
+    return vB.addScaledVector(vA, -k).length();
+  }
+  const pipHead = new THREE.Vector3();
   let yaw = 0, t = 0, focus = false;
   return {
     column, arrow,
@@ -89,22 +108,35 @@ export function createBeacon(THREE, scene) {
     update(dt, target, pipPos, still, camPos) {
       t += dt;
       if (!target) { column.visible = arrow.visible = false; return Infinity; }
-      column.visible = true;
+      const dx = target.x - pipPos.x, dz = target.z - pipPos.z, dy = target.y - pipPos.y;
+      const flat = Math.hypot(dx, dz);
+      // column: always AT the target (never at Pip), hidden when Pip is basically there
+      column.visible = Math.hypot(flat, dy) > COL_HIDE;
       column.position.set(target.x, target.y - 1.2 + H / 2, target.z);
-      if (camPos) { // keep a readable on-screen width when far away
-        const k = Math.min(5, Math.max(1, Math.hypot(camPos.x - target.x, camPos.z - target.z) / 14));
+      if (camPos) { // keep a readable on-screen width when far away, capped so it stays a marker
+        const k = Math.min(COL_MAX_SCALE, Math.max(1, Math.hypot(camPos.x - target.x, camPos.z - target.z) / 20));
         column.scale.set(k, 1, k);
       }
       colMat.opacity = still ? 1 : 0.85 + Math.sin(t * 2.4) * 0.15;
-      const dx = target.x - pipPos.x, dz = target.z - pipPos.z, dy = target.y - pipPos.y;
-      const flat = Math.hypot(dx, dz);
       arrow.visible = flat > ARROW_HIDE;
       if (arrow.visible) {
         const want = Math.atan2(dx, dz);
         let d = want - yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
         yaw += d * Math.min(1, dt * 10);
-        arrow.position.set(pipPos.x, pipPos.y + HEAD + (still ? 0 : Math.sin(t * 3.2) * 0.12), pipPos.z);
+        // camera looking down on Pip -> sit lower (1.0 m above the head)
+        const lookingDown = camPos && (camPos.y - pipPos.y) > 0.8 * Math.hypot(camPos.x - pipPos.x, camPos.z - pipPos.z); // > ~40° down
+        const up = lookingDown ? 1.0 : ARROW_UP;
+        arrow.position.set(pipPos.x, pipPos.y + PIP_HEAD + up + (still ? 0 : Math.sin(t * 3.2) * 0.08), pipPos.z);
         if (camPos) orientArrow(camPos); else arrow.rotation.set(0, yaw, 0);
+        // never block the view of Pip: fade out when the arrow sits on the camera -> Pip line
+        let alpha = 1;
+        if (camPos) {
+          pipHead.set(pipPos.x, pipPos.y + PIP_HEAD * 0.6, pipPos.z);
+          const sd = segDist(arrow.position, camPos, pipHead);
+          alpha = Math.min(1, Math.max(0, (sd - 0.25) / 0.5));
+        }
+        arrowMat.opacity = alpha; arrowMat.depthWrite = alpha > 0.99;
+        if (alpha <= 0.02) arrow.visible = false;
       }
       return Math.hypot(flat, dy);
     },

@@ -279,7 +279,8 @@ async function run(browser, name, viewport) {
   ok(runway !== null, `found a clear runway for the combo (heading ${runway?.toFixed(2)})`);
   await T.down(1, L.x, L.y);
   for (let i = 1; i <= 6; i++) { await T.wait(16); await T.move(1, L.x, L.y - i * 12); }
-  await T.wait(500);
+  // start the chain as soon as Pip is up to speed (a slow machine must not run him off the runway)
+  await page.waitForFunction(() => Math.hypot(window.__game.player.velocity.x, window.__game.player.velocity.z) > 6, null, { timeout: 5000 }).catch(() => {});
   t = await mark(page);
   await page.evaluate(([x, y]) => {
     const el = document.getElementById('touch-controls'); let n = 0, id = 900;
@@ -291,7 +292,7 @@ async function run(browser, name, viewport) {
     if (window.__dbg) { for (const ty of ['player:land', 'player:jump']) window.__game.events.on(ty, p => console.log('C', ty, JSON.stringify(p), window.__game.player.mode, performance.now() | 0));
       for (const ty of ['pointerdown', 'pointerup']) el.addEventListener(ty, e => console.log('C', ty, e.pointerId, e.timeStamp | 0, performance.now() | 0, JSON.stringify(window.__game.touch.debug()))); }
     window.__game.events.on('player:land', () => { if (n++ < 2) setTimeout(tap, 10); });
-    tap();
+    tap(); // (setTimeout timers are real time; the game may run slower than real time here, which only widens the window)
   }, [R.x, R.y]);
   await page.waitForFunction(s => window.__ev.filter(e => e.type === 'player:jump' && e.t >= s).length >= 3, t, { timeout: 40000 }).catch(() => {});
   await T.up(1);

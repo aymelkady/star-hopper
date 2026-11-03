@@ -48,8 +48,22 @@
  *   break:start       {minutes, prompts:[...]}    stretch-break card shown (game paused + saved)
  *   break:end         {action:'play'|'stop'}      stretch break finished
  *   focus:changed     {on}                        focus mode effective state (lower music when on)
+ *
+ * FOCUS-PLAY EVENTS (systems/focusplay.js + systems/challenges/*.js, DESIGN.md §5.3):
+ *   challenge:start   {type:'gem'|'two'|'spot', zone, level}     after the rule card + 3-2-1
+ *   challenge:hit     {type, index, rt}           correct response (rt ms; null/0 = correct "leave it")
+ *                                                 type 'echo' = a correct chime in Echo Chimes
+ *   challenge:miss    {type, reason}              'decoy' | 'timeout' | 'early' | 'plain' | 'order'
+ *   challenge:end     {type, zone, hits, total, won, level, cancelled}
+ *   freeze:start      {}                          whistle + "Freeze! Stand still" card
+ *   freeze:success    {coins, zone}               stood still 2 s -> +5 coins (pickup:coin gift:true)
+ *   freeze:fail       {}                          moved -> "Whoops! Next time" (nothing lost)
+ *   focus:meter       {value}                     Focus Meter 0..100, on every 5-point change
+ *   focus:burst       {streak}                    meter full: 10 s golden trail + coins x2
+ *   (pickup:coin gains value 2 during a burst; ui:celebrate {kind:'coin100', reason:'freeze'})
  *   settings:changed  (see above) keys set by ui/settings.js: breakMinutes, helperMode, focusMode,
- *                     reduceMotion, cameraSpeed, invertY, masterVolume ("Sound"), musicVolume, haptics
+ *                     reduceMotion, cameraSpeed, invertY, masterVolume ("Sound"), musicVolume, haptics,
+ *                     freezeEnabled (focus-play; row from plugins.focusplay.settingsRows())
  */
 export function createEvents() {
   const map = new Map();

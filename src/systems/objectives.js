@@ -13,7 +13,7 @@ import { createBeacon } from './beacon.js';
 import { createQuestCard } from '../ui/quest-card.js';
 
 export const NAME = 'objectives';
-const TOTAL = 15, CELEBRATE_S = 2.5, INTRO_S = 3;
+let TOTAL = 15; /* focus-play: recounted on game:start (15 + 5 challenge stars) */ const CELEBRATE_S = 2.5, INTRO_S = 3;
 
 // [icon, ≤6-word text, counter total | null]
 const LABELS = {
@@ -29,7 +29,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 export function init(ctx) {
   const { THREE, scene, events, state, world, ctrl, pip, game, api, menus, hud } = ctx;
   const ORDER = world.STAR_ORDER;
-  const byId = new Map(world.stars.map(s => [s.id, s]));
+  const byId = world.props.starById; // focus-play: live map (challenge stars register after this plugin)
   const beacon = createBeacon(THREE, scene);
   const card = createQuestCard({ onSkip: () => skip(), onIntroTap: () => endIntro() });
   card.show(false);
@@ -66,13 +66,13 @@ export function init(ctx) {
     }
   }
   function labelOf(s) {
-    const [icon, text, of] = LABELS[s.id] || ['⭐', s.name];
+    const [icon, text, of] = LABELS[s.id] || s.label || ['⭐', s.name]; // focus-play: s.label = [icon, text]
     if (s.hidden && s.revealed && !s.collected) return { icon: '⭐', text: 'Grab the star!', progress: 1 };
     const p = progressOf(s);
     if (p && of) return { icon, text: `${text} ${p.n} / ${p.of}`, progress: p.n / p.of };
     return { icon, text, progress: null };
   }
-  const shortText = s => (LABELS[s.id] || ['', s.name])[1];
+  const shortText = s => (LABELS[s.id] || s.label || ['', s.name])[1];
 
   // ---- routing (zone wayfinding) ----
   function computeRoute(s) {
@@ -123,7 +123,8 @@ export function init(ctx) {
     const d = state.data; if (!d) { quest = null; return; }
     const q = d.todayQuest;
     if (q && q.date === today() && Array.isArray(q.stars)) { quest = q; return; }
-    const picks = order(false).slice(0, 3).map(s => s.id);
+    const picks = [];                    // focus-play: at most one challenge star per quest
+    for (const s of order(false)) { if (picks.length >= 3) break; if (s.focus && picks.some(id => byId.get(id).focus)) continue; picks.push(s.id); }
     quest = picks.length ? { date: today(), stars: picks, celebrated: false } : null;
     d.todayQuest = quest;
     state.save('quest');
@@ -158,7 +159,7 @@ export function init(ctx) {
 
   // ---- events ----
   events.on('game:start', () => {
-    active = true; skipRank.clear(); skipN = 0; celebrateT = 0;
+    active = true; skipRank.clear(); skipN = 0; celebrateT = 0; TOTAL = world.stars.length; // focus-play
     loadQuest(); card.objective(); card.show(true);
     advance(true); showIntro();
   });

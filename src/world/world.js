@@ -160,6 +160,13 @@ export function createWorld({ scene, events, state, mobile = false }) {
     findPickup(id) { return P.coinById.get(id) || P.starById.get(id) || null; },
     coinCounts() { const o = {}; for (const c of P.coins) o[c.zone] = (o[c.zone] || 0) + c.value; return o; },
     setStill(v) { P.still = !!v; },
+    // focus-play: register an extra star after the world is built (systems/focusplay.js challenge
+    // stars).  It is a normal star (P.star) and slots into STAR_ORDER right after `after`.
+    addStar(def, after) {
+      const s = P.star(def);
+      if (!STAR_ORDER.includes(s.id)) { const i = STAR_ORDER.indexOf(after); STAR_ORDER.splice(i < 0 ? STAR_ORDER.length : i + 1, 0, s.id); }
+      return s;
+    },
     zoneEntrances: ZONE_ENTRANCES,
     zoneEntrance(zone) {
       const e = ZONE_ENTRANCES[zone]; if (!e) return null;
