@@ -1,0 +1,16 @@
+{
+  "name": "star-hopper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Star Hopper - an original browser 3D platformer for kids (procedural, no assets).",
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "build": "node build.mjs",
+    "test": "node test/smoke.spec.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
