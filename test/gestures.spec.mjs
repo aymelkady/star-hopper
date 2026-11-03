@@ -70,6 +70,27 @@ async function home(page) {
   await page.evaluate(() => { const g = window.__game; const s = g.world.respawnPoint(); g.player.teleport(s.x, s.y, s.z, s.facing); g.camera.snap(g.player.position, g.player.facing); });
   await settle(page); await sleep(150);
 }
+// Face Pip + camera down a clear, flat 30 m runway from the spawn (combo needs uninterrupted running).
+async function openRunway(page) {
+  const found = await page.evaluate(() => {
+    const g = window.__game, col = g.world.col, p = g.player.position;
+    for (let k = 0; k < 16; k++) {
+      const a = k * Math.PI / 8, dx = Math.sin(a), dz = Math.cos(a);
+      let flat = true; const arr = [];
+      for (let d = 1; d <= 30 && flat; d += 1) {
+        const x = p.x + dx * d, z = p.z + dz * d;
+        col.sphereContacts(x, p.y + 1.2, z, 0.7, arr);
+        flat = !arr.some(c => c.depth > 1e-4) && Math.abs(col.groundHeight(x, z, p.y + 1) - p.y) < 0.25;
+      }
+      if (!flat) continue;
+      g.player.facing = a; g.camera.snap(p, a);
+      return a;
+    }
+    return null;
+  });
+  await sleep(100);
+  return found;
+}
 async function airborne(page, up = 7) {
   await page.evaluate(h => { const g = window.__game, p = g.player.position; g.player.teleport(p.x, p.y + h, p.z); }, up);
   await page.waitForFunction(() => !window.__game.player.grounded, null, { timeout: 2000 }).catch(() => {});
@@ -216,6 +237,8 @@ async function run(browser, name, viewport) {
 
   // --- combo: taps on landing chain double + triple (synthetic pointers fired on player:land) ---
   await home(page);
+  const runway = await openRunway(page);
+  ok(runway !== null, `found a clear runway for the combo (heading ${runway?.toFixed(2)})`);
   await T.down(1, L.x, L.y);
   for (let i = 1; i <= 6; i++) { await sleep(16); await T.move(1, L.x, L.y - i * 12); }
   await sleep(500);
@@ -242,7 +265,8 @@ async function run(browser, name, viewport) {
   await T.down(1, L.x, L.y); await sleep(300);
   await T.tap(2, R.x, R.y, 50); await sleep(120);
   await T.up(1); await sleep(60);
-  ok(await count(page, 'player:jump', t) === 1 && await count(page, 'game:pause', t) === 0, 'still left thumb + tap right -> jump in place, no pause');
+  const jp = [await count(page, 'player:jump', t), await count(page, 'game:pause', t)];
+  ok(jp[0] === 1 && jp[1] === 0, `still left thumb + tap right -> jump in place, no pause (jumps ${jp[0]}, pauses ${jp[1]})`);
   await settle(page);
 
   // --- two-finger tap = pause ---
@@ -288,6 +312,7 @@ async function tutorial(browser) {
   const caps = await page.$$eval('#gs-tutorial .gs-cap', n => n.map(x => x.textContent));
   ok(caps.length === 4 && caps.every(c => c.split(/\s+/).length <= 4), `captions: ${caps.join(' | ')}`);
   ok(await page.$$eval('#gs-tutorial .gs-hand', n => n.every(x => getComputedStyle(x).animationName !== 'none')), 'hand glyphs are CSS-animated');
+  await page.evaluate(() => window.__game.touch.showTutorial()); // restart its 1.5 s clock (page setup took a while)
   const t = await mark(page);
   await T.tap(2, 800, 400, 40); await sleep(100);
   ok(await page.isVisible('#gs-tutorial'), 'tap before 1.5 s does not dismiss');

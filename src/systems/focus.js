@@ -13,7 +13,7 @@ export function init(ctx) {
   const { events, state, world, scene, hud } = ctx;
   const btn = document.getElementById('btn-focus');
   const vig = document.getElementById('focus-vignette');
-  const base = { hemi: world.hemi.intensity, sun: world.sun.intensity, near: scene.fog ? scene.fog.near : 0, far: scene.fog ? scene.fog.far : 0 };
+  const base = { hemi: world.hemi.intensity, sun: world.sun.intensity, near: scene.fog ? scene.fog.near : 0, far: scene.fog ? scene.fog.far : 0, density: scene.fog ? scene.fog.density : 0 };
   let playing = false, on = null;
 
   function apply(want) {
@@ -22,7 +22,9 @@ export function init(ctx) {
     world.setStill(on);
     world.hemi.intensity = base.hemi * (on ? 0.72 : 1);
     world.sun.intensity = base.sun * (on ? 0.85 : 1);
-    if (scene.fog) { scene.fog.near = on ? 30 : base.near; scene.fog.far = on ? 140 : base.far; }
+    const fog = scene.fog;
+    if (fog && fog.isFogExp2) fog.density = base.density * (on ? 2.2 : 1);
+    else if (fog) { fog.near = on ? Math.min(30, base.near) : base.near; fog.far = on ? Math.min(140, base.far) : base.far; }
     if (vig) vig.classList.toggle('on', on);
     document.body.classList.toggle('focus-on', on);
     if (btn) { btn.classList.toggle('active', on); btn.setAttribute('aria-pressed', String(on)); }

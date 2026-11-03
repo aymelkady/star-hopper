@@ -49,8 +49,8 @@ async function desktopPass(browser) {
   await page.waitForTimeout(300);
   const qcText = (await page.textContent('#quest-card')).replace(/\s+/g, ' ').trim();
   ok(await page.isVisible('#quest-card') && qcText.length > 3, `quest card visible after start ("${qcText.slice(0, 60)}")`);
-  ok(await page.isVisible('#quest-card .qc-intro'), "Today's quest card shown on start");
-  if (await page.isVisible('#quest-card .qc-intro')) await page.click('#quest-card .qc-intro');
+  ok(await page.evaluate(() => window.__game.plugins.objectives.introsShown === 1 && window.__game.plugins.objectives.quest().stars.length === 3), "Today's quest (3 stars) card shown on start");
+  await page.evaluate(() => { const el = document.querySelector('#quest-card .qc-intro'); if (el && !el.hidden) el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); }); // tap (race-free vs. the 3 s auto-close)
   await page.waitForTimeout(200);
   const objText = (await page.textContent('#quest-card .qc-text')).trim();
   ok(await page.isVisible('#quest-card .qc-obj') && objText.length > 0, `quest card shows the objective after a tap ("${objText}")`);
@@ -81,8 +81,9 @@ async function desktopPass(browser) {
   await page.waitForFunction(() => window.__game.log.some(e => e.type === 'pickup:star'), null, { timeout: 5000 }).catch(() => {});
   ok(await logHas(page, 'pickup:star'), 'standing on the hilltop star -> pickup:star');
   ok(await logHas(page, 'ui:celebrate', tStar), 'ui:celebrate emitted for the star');
-  const celeText = await page.textContent('#quest-card .qc-cele-big').catch(() => '');
-  ok(/Star 1 \/ 15/.test(celeText) && await page.isVisible('#quest-card .qc-cele'), `celebration card shown ("${celeText}")`);
+  const celeText = await page.evaluate(() => window.__game.plugins.objectives.lastCelebration);
+  const celeDom = await page.textContent('#quest-card .qc-cele-big').catch(() => '');
+  ok(/Star 1 \/ 15/.test(celeText) && celeDom === celeText, `celebration card shown ("${celeText}")`);
   await page.screenshot({ path: join(root, 'test/shots/celebrate.png') });
   await page.waitForFunction(t => window.__game.log.some(e => e.type === 'objective:changed' && e.t >= t && e.payload.starId !== 'meadow-1'), tStar, { timeout: 10000 }).catch(() => {});
   const obj = await page.evaluate(t => window.__game.log.filter(e => e.type === 'objective:changed' && e.t >= t).map(e => e.payload.starId), tStar);
@@ -102,6 +103,7 @@ async function desktopPass(browser) {
   await page.waitForTimeout(600);
   await page.screenshot({ path: join(root, 'test/last-run.png') });
   await uiChecks(page);
+  const questBefore = await page.evaluate(() => JSON.stringify(window.__game.plugins.objectives.quest()));
 
   // reload: save must persist
   await page.reload();
@@ -115,7 +117,8 @@ async function desktopPass(browser) {
   ok(persisted.star, 'star persisted after reload');
   ok(persisted.coin, 'collected coin persisted after reload');
   ok(await page.evaluate(() => window.__game.state.settings.breakMinutes) === 15, 'settings change (session length 15) persisted after reload');
-  ok(await page.evaluate(() => window.__game.plugins.objectives.quest()?.celebrated === true), "Today's quest progress persisted after reload");
+  ok(await page.evaluate(q => JSON.stringify(window.__game.plugins.objectives.quest()) === q, questBefore), "Today's quest persisted after reload");
+  await questFinale(page);
 
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
   await context.close();
@@ -171,8 +174,8 @@ async function uiChecks(page) {
   await page.click('#btn-break-play');
   await page.waitForTimeout(200);
   ok(await mode() === 'playing' && await logHas(page, 'break:end', t) && await page.evaluate(() => window.__game.plugins.breaks.remaining() > 1100), '"Play again" resumes with a fresh timer');
-  const r0 = await page.evaluate(() => window.__game.plugins.breaks.remaining());
   await page.evaluate(() => window.__game.pause());
+  const r0 = await page.evaluate(() => window.__game.plugins.breaks.remaining());
   await page.waitForTimeout(1200);
   ok(await page.evaluate(() => window.__game.plugins.breaks.remaining()) >= r0 - 0.05, 'pause menu does not use up break time');
 
@@ -190,6 +193,10 @@ async function uiChecks(page) {
   await page.click('#btn-resume');
   await page.waitForTimeout(100);
 
+}
+
+async function questFinale(page) {
+  const mode = () => page.evaluate(() => window.__game.game.mode);
   // Today's quest finale: collect the other quest stars -> "Great session!"
   const quest = await page.evaluate(() => window.__game.plugins.objectives.quest());
   for (const id of quest.stars) await page.evaluate(id => window.__game.collect(id), id);
@@ -201,76 +208,114 @@ async function uiChecks(page) {
   ok(await mode() === 'playing' && await page.isVisible('#quest-card .qc-obj'), '"Keep going" resumes with a new objective');
 }
 
-async function touchPass(browser, name, viewport) {
-  console.log(`Touch pass: ${name} (${viewport.width}x${viewport.height})`);
-  const { context, page, errors } = await openPage(browser, { viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
-  await page.tap('#btn-play');
-  ok(await logHas(page, 'input:firstGesture'), 'first tap emitted input:firstGesture');
-  await page.tap('#slot-1');
-  await page.waitForFunction(() => window.__game.ready === true, null, { timeout: 15000 });
-  ok(await page.isVisible('#touch-controls'), '#touch-controls visible');
-  for (const id of ['#touch-jump', '#touch-long', '#touch-pound']) {
-    const bb = await page.locator(id).boundingBox();
-    ok(bb && bb.width >= 64 && bb.height >= 64, `${id} >= 64 px (${bb ? Math.round(bb.width) : 0})`);
-  }
-  // touch buttons must not overlap HUD chips, HUD buttons or the quest card
-  const overlap = await page.evaluate(() => {
-    const r = s => document.querySelector(s).getBoundingClientRect();
-    const hit = (a, b) => a.width && b.width && !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
-    const btns = ['#touch-jump', '#touch-long', '#touch-pound'].map(r);
-    const others = ['.hud-left', '.hud-right', '#quest-card'].map(r);
-    return btns.some(b => others.some(o => hit(b, o)));
-  });
-  ok(!overlap, 'touch buttons do not overlap HUD / quest card');
-  const qcOverlap = async () => page.evaluate(() => {
+// phone / iPad: the quest card must not collide with HUD chips or touch controls
+async function questCardLayout(page, name, viewport) {
+  const qcOverlap = () => page.evaluate(() => {
     const hit = (a, b) => a.width && b.width && !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
     const card = document.querySelector('#quest-card').getBoundingClientRect();
     const els = [...document.querySelectorAll('.hud-left > *, .hud-right > *, #touch-controls button')].filter(e => e.offsetParent);
     return els.filter(e => hit(card, e.getBoundingClientRect())).map(e => e.id || e.className);
   });
   const ov1 = await qcOverlap();
-  ok(ov1.length === 0, `quest card (today's quest) does not overlap HUD chips / touch controls ${ov1.join(',')}`);
-  if (await page.isVisible('#quest-card .qc-intro')) await page.tap('#quest-card .qc-intro');
+  ok(ov1.length === 0, `quest card does not overlap HUD chips / touch controls ${ov1.join(',')}`);
+  await page.evaluate(() => { const el = document.querySelector('#quest-card .qc-intro'); if (el && !el.hidden) el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); }); // tap (race-free vs. the 3 s auto-close)
   await page.waitForTimeout(200);
   const ov2 = await qcOverlap();
-  ok(await page.isVisible('#quest-card .qc-obj') && ov2.length === 0, `quest card (objective) does not overlap HUD chips / touch controls ${ov2.join(',')}`);
-  const ringOk = await page.evaluate(() => { const r = document.getElementById('break-ring'); return !!r.offsetParent && r.parentElement.classList.contains('hud-left'); });
-  ok(ringOk, 'break ring sits top-left under the chips on touch');
+  ok(await page.isVisible('#quest-card .qc-obj') && ov2.length === 0, `quest card (objective look) does not overlap HUD chips / touch controls ${ov2.join(',')}`);
+  ok(await page.evaluate(() => { const r = document.getElementById('break-ring'); return !!r.offsetParent && r.parentElement.classList.contains('hud-left'); }), 'break ring sits top-left under the chips on touch');
   const qbb = await page.locator('#quest-card').boundingBox();
-  ok(qbb && qbb.width <= viewport.width && Math.round(qbb.y) >= 0, `quest card fits the screen (${Math.round(qbb.width)} px wide)`);
+  ok(qbb && qbb.x >= 0 && qbb.x + qbb.width <= viewport.width && qbb.y >= 0, `quest card fits the screen (${qbb ? Math.round(qbb.width) : 0} px wide)`);
   await page.screenshot({ path: join(root, `test/shots/quest-${name}.png`) });
-  await page.waitForTimeout(300);
+}
+
+async function touchPass(browser, name, viewport) {
+  console.log(`Touch pass: ${name} (${viewport.width}x${viewport.height}, gestures only)`);
+  const { context, page, errors } = await openPage(browser, { viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  const sleep = ms => page.waitForTimeout(ms);
+  await page.tap('#btn-play');
+  ok(await logHas(page, 'input:firstGesture'), 'first tap emitted input:firstGesture');
+  await page.tap('#slot-1');
+  await page.waitForFunction(() => window.__game.ready === true, null, { timeout: 15000 });
+  ok(await page.isVisible('#touch-controls'), '#touch-controls visible');
+  const gone = await page.evaluate(() => ['#touch-jump', '#touch-long', '#touch-pound'].filter(s => document.querySelector(s)));
+  ok(gone.length === 0, `Jump / Long / Pound buttons removed (${gone.join(',') || 'none left'})`);
 
   const cdp = await context.newCDPSession(page);
-  const touchEv = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map(p => ({ x: p.x, y: p.y, id: p.id, radiusX: 4, radiusY: 4, force: 1 })) });
-  const jb = await page.locator('#touch-jump').boundingBox();
-  const jump = { x: jb.x + jb.width / 2, y: jb.y + jb.height / 2, id: 2 };
-  const stick = { x: viewport.width * 0.2, y: viewport.height * 0.65, id: 1 };
-  const p0 = await pos(page);
-  await touchEv('touchStart', [stick]);
-  for (let i = 1; i <= 6; i++) { await touchEv('touchMove', [{ ...stick, y: stick.y - i * 12 }]); await page.waitForTimeout(16); }
-  const held = { ...stick, y: stick.y - 72 };
-  await page.waitForTimeout(600);
-  await touchEv('touchStart', [held, jump]);        // multi-touch: joystick + jump together
-  await page.waitForTimeout(250);
-  await touchEv('touchEnd', [held]);
-  await page.waitForTimeout(500);
-  await touchEv('touchEnd', []);
-  await page.waitForTimeout(400);
-  const p1 = await pos(page);
-  ok(dist(p0, p1) > 1.5, `joystick moved Pip (${dist(p0, p1).toFixed(2)} m)`);
-  ok(await logHas(page, 'player:jump'), 'Jump button -> player:jump (while holding the joystick)');
+  const active = new Map();
+  const send = type => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [...active.values()].map(p => ({ ...p, radiusX: 4, radiusY: 4, force: 1 })) });
+  const down = async (id, x, y) => { active.set(id, { id, x, y }); await send('touchStart'); };
+  const move = async (id, x, y) => { active.set(id, { id, x, y }); await send('touchMove'); };
+  const up = async id => { active.delete(id); await send('touchEnd'); };
+  const stroke = async (id, x, y, dx, dy, ms, steps) => {
+    await down(id, x, y);
+    for (let i = 1; i <= steps; i++) { await sleep(ms / steps); await move(id, x + dx * i / steps, y + dy * i / steps); }
+    await up(id);
+  };
+  const grounded = () => page.waitForFunction(() => window.__game.player.grounded && window.__game.player.mode === 'ground', null, { timeout: 5000 }).catch(() => {});
 
-  // camera drag on the right half (away from the buttons)
+  // first touch play: the "How to move" overlay; dismissed by a tap after 1.5 s
+  ok(await page.isVisible('#gs-tutorial'), 'first touch play shows the gesture tutorial');
+  await sleep(1600);
+  await down(9, viewport.width / 2, viewport.height / 2); await sleep(40); await up(9);
+  await sleep(150);
+  ok(!await page.isVisible('#gs-tutorial'), 'tutorial dismissed by a tap');
+  await questCardLayout(page, name, viewport);
+  await grounded(); await sleep(200);
+
+  // drag left = move
+  const L = { x: viewport.width * 0.2, y: viewport.height * 0.65 }, R = { x: viewport.width * 0.72, y: viewport.height * 0.55 };
+  const p0 = await pos(page);
+  await down(1, L.x, L.y);
+  for (let i = 1; i <= 6; i++) { await move(1, L.x, L.y - i * 12); await sleep(16); }
+  await sleep(1400);
+  await up(1); await sleep(300);
+  const p1 = await pos(page);
+  ok(dist(p0, p1) >= 5, `drag on the left half moved Pip (${dist(p0, p1).toFixed(2)} m)`);
+  await grounded();
+
+  // tap right = jump
+  let t = await nowT(page);
+  await down(2, R.x, R.y); await sleep(50); await up(2);
+  await page.waitForFunction(s => window.__game.log.some(e => e.type === 'player:jump' && e.t >= s), t, { timeout: 1000 }).catch(() => {});
+  ok(await logHas(page, 'player:jump', t), 'tap on the right half -> player:jump');
+  await grounded();
+
+  // swipe down in the air = ground pound
+  await page.evaluate(() => { const g = window.__game, p = g.player.position; g.player.teleport(p.x, p.y + 7, p.z); });
+  await sleep(60);
+  t = await nowT(page);
+  await stroke(2, R.x, R.y - 80, 0, 130, 60, 4);
+  await page.waitForFunction(s => window.__game.log.some(e => e.type === 'player:groundpound' && e.t >= s), t, { timeout: 3000 }).catch(() => {});
+  ok(await logHas(page, 'player:groundpound', t), 'swipe down while airborne -> player:groundpound');
+  await grounded(); await sleep(300);
+
+  // swipe sideways while running = long jump
+  await down(1, L.x, L.y);
+  for (let i = 1; i <= 6; i++) { await move(1, L.x, L.y - i * 12); await sleep(16); }
+  await page.waitForFunction(() => Math.hypot(window.__game.player.velocity.x, window.__game.player.velocity.z) > 6, null, { timeout: 2000 }).catch(() => {});
+  t = await nowT(page);
+  await stroke(2, R.x - 60, R.y, 140, 0, 60, 4);
+  await sleep(150);
+  await up(1);
+  ok(await logHas(page, 'player:longjump', t), 'swipe sideways while running -> player:longjump');
+  await grounded(); await sleep(200);
+
+  // slow drag on the right half = camera orbit
   const yaw0 = await page.evaluate(() => window.__game.camera.yaw);
-  const cam = { x: viewport.width * 0.7, y: viewport.height * 0.35, id: 3 };
-  await touchEv('touchStart', [cam]);
-  for (let i = 1; i <= 8; i++) { await touchEv('touchMove', [{ ...cam, x: cam.x - i * 15 }]); await page.waitForTimeout(16); }
-  await touchEv('touchEnd', []);
-  await page.waitForTimeout(200);
+  t = await nowT(page);
+  await stroke(3, R.x, R.y, -180, 0, 900, 18);
+  await sleep(100);
   const yaw1 = await page.evaluate(() => window.__game.camera.yaw);
-  ok(Math.abs(yaw1 - yaw0) > 0.2, `camera drag orbits (Δyaw ${(yaw1 - yaw0).toFixed(2)})`);
+  ok(Math.abs(yaw1 - yaw0) > 0.2, `slow drag orbits the camera (Δyaw ${(yaw1 - yaw0).toFixed(2)})`);
+  ok(!await logHas(page, 'player:jump', t) && !await logHas(page, 'player:longjump', t), 'slow drag fires no jump');
   await page.screenshot({ path: join(root, `test/shots/${name}.png`) });
+
+  // two-finger tap = pause
+  t = await nowT(page);
+  await down(4, R.x, R.y); await sleep(30); await down(5, R.x + 90, R.y + 20);
+  await sleep(60); await up(4); await sleep(20); await up(5);
+  await page.waitForFunction(s => window.__game.log.some(e => e.type === 'game:pause' && e.t >= s), t, { timeout: 1000 }).catch(() => {});
+  ok(await logHas(page, 'game:pause', t), 'two-finger tap -> game:pause');
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
   await context.close();
 }

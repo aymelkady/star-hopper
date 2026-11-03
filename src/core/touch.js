@@ -107,6 +107,9 @@ export function createTouch(root = document.body) {
   let bound = null;                   // optional {player, state} via touch.attach()
   let jumpHoldUntil = 0;
   const now = () => performance.now();
+  // Event time: the platform timestamp (same origin as performance.now()) so a janky frame never
+  // stretches a quick tap into a "hold"; falls back to performance.now() when it looks foreign.
+  const tsOf = e => { const n = now(), ts = e && e.timeStamp; return ts > 0 && ts <= n + 5 && n - ts < 2000 ? ts : n; };
   const game = () => bound || (typeof window !== 'undefined' && window.__game) || null;
   const settings = () => { const g = game(); return (g && g.state && g.state.settings) || {}; };
 
@@ -193,9 +196,9 @@ export function createTouch(root = document.body) {
     state.camDx += p.x - p.x0; state.camDy += p.y - p.y0; // catch up the motion made while deciding
     p.lx = p.x; p.ly = p.y;
   }
-  function peakSpeed(p) {
-    // px/s: max of the average since touch-down and the speed over the latest ~60 ms
-    const s = p.samples, last = s[s.length - 1];
+  function peakSpeed(p, s) {
+    // px/s: max of the average since touch-down and the speed over the latest ~60 ms of `s`
+    const last = s[s.length - 1];
     const dtAll = Math.max(1, last.t - p.t0);
     let best = Math.hypot(last.x - p.x0, last.y - p.y0) / dtAll * 1000;
     let j = s.length - 1;
@@ -228,13 +231,21 @@ export function createTouch(root = document.body) {
     }
   }
 
-  // Decide a right-half pointer. Called on move, on timers and on lift.
+  // Decide a right-half pointer. Event-driven (move / lift), all times are event timestamps.
   function evaluate(p, t, lifted) {
     if (p.kind !== 'pending' && p.kind !== 'hold' && p.kind !== 'flick') return;
     const age = t - p.t0, d = travel(p);
+    if (p.kind === 'pending' && age > G.DECIDE_MS) {
+      // first event past 100 ms: rebuild what the finger was doing AT 100 ms
+      const early = p.samples.filter(q => q.t - p.t0 <= G.DECIDE_MS);
+      const tr = early.reduce((m, q) => Math.max(m, Math.hypot(q.x - p.x0, q.y - p.y0)), 0);
+      if (tr < G.TAP_SLOP) p.kind = 'hold';                                      // still a tap candidate
+      else if (early.length > 1 && peakSpeed(p, early) >= G.SWIPE_SPEED) p.kind = 'flick'; // fast, may still finish a swipe
+      else { startOrbit(p); return; }
+    }
     if (d >= G.SWIPE_DIST) {
-      const inTime = p.kind !== 'hold' || age <= G.TAP_MS; // rest-then-flick only counts inside the tap window
-      if (inTime && peakSpeed(p) >= G.SWIPE_SPEED) decideSwipe(p); else startOrbit(p);
+      const inTime = p.kind === 'pending' || (p.kind === 'hold' && age <= G.TAP_MS) || (p.kind === 'flick' && age <= G.FLICK_WAIT_MS);
+      if (inTime && peakSpeed(p, p.samples) >= G.SWIPE_SPEED) decideSwipe(p); else startOrbit(p);
       return;
     }
     if (lifted) {
@@ -244,18 +255,17 @@ export function createTouch(root = document.body) {
       } else startOrbit(p);
       return;
     }
-    if (p.kind === 'pending' && age >= G.DECIDE_MS) {
-      if (p.maxTravel < G.TAP_SLOP) p.kind = 'hold';                         // still a tap candidate
-      else if (peakSpeed(p) >= G.SWIPE_SPEED) p.kind = 'flick';            // fast, may still become a swipe
-      else { startOrbit(p); return; }
-    }
-    if (p.kind === 'hold' && (p.maxTravel >= G.TAP_SLOP || age > G.TAP_MS)) startOrbit(p);
+    // a still finger past the tap window stays undecided (an orbit with no motion = nothing) until it moves
+    if (p.kind === 'hold' && p.maxTravel >= G.TAP_SLOP) startOrbit(p);
     else if (p.kind === 'flick' && age > G.FLICK_WAIT_MS) startOrbit(p);
   }
-  function schedule(p) {
-    for (const ms of [G.DECIDE_MS, G.TAP_MS + 1, G.FLICK_WAIT_MS + 1, G.TWO_UP_MS + 1]) {
-      p.timers.push(setTimeout(() => { const t = now(); if (ptrs.get(p.id) === p) evaluate(p, t, false); checkGroup(t); }, ms));
-    }
+  // Group deadline: wait one frame first so input already queued for this frame (a lift that
+  // physically happened in time) is processed before we give up on the two-finger tap.
+  function groupDeadline(delay) {
+    setTimeout(() => {
+      const go = () => checkGroup(now());
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(go, 0)); else go();
+    }, delay);
   }
 
   const capture = e => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ } };
@@ -271,9 +281,9 @@ export function createTouch(root = document.body) {
 
   el.addEventListener('pointerdown', e => {
     e.preventDefault(); capture(e); state.active = true;
-    const t = now();
+    const t = tsOf(e);
     const p = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: t, samples: [{ x: e.clientX, y: e.clientY, t }],
-      maxTravel: 0, kind: 'pending', multi: false, timers: [], lx: e.clientX, ly: e.clientY };
+      maxTravel: 0, kind: 'pending', multi: false, lx: e.clientX, ly: e.clientY };
     if (e.pointerType === 'mouse') { p.kind = 'orbit'; ptrs.set(p.id, p); return; } // hybrid device: mouse drag orbits
     const leftHalf = e.clientX < window.innerWidth / 2;
     if (leftHalf && stickId === null) {
@@ -290,17 +300,23 @@ export function createTouch(root = document.body) {
       if (t - q.t0 <= G.TWO_DOWN_MS && q.maxTravel < G.TAP_SLOP) {
         group = { ids: new Set([q.id, p.id]), t0: q.t0, lifted: new Set(), deferred: [] };
         p.multi = q.multi = true;
-        setTimeout(() => checkGroup(now()), Math.max(0, G.TWO_UP_MS - (t - q.t0)) + 5);
+        groupDeadline(Math.max(0, G.TWO_UP_MS - (now() - q.t0)) + 5);
         break;
       }
     }
-    if (p.kind === 'pending') schedule(p);
   });
 
   el.addEventListener('pointermove', e => {
     const p = ptrs.get(e.pointerId); if (!p) return;
     e.preventDefault();
-    const t = now();
+    const t = tsOf(e);
+    if (p.kind !== 'stick' && p.kind !== 'orbit' && e.getCoalescedEvents) {
+      for (const c of e.getCoalescedEvents().slice(0, -1)) {   // intermediate samples (janky frames)
+        const ct = tsOf(c); if (ct < p.samples[p.samples.length - 1].t) continue;
+        p.samples.push({ x: c.clientX, y: c.clientY, t: ct });
+        p.maxTravel = Math.max(p.maxTravel, Math.hypot(c.clientX - p.x0, c.clientY - p.y0));
+      }
+    }
     p.x = e.clientX; p.y = e.clientY;
     p.maxTravel = Math.max(p.maxTravel, travel(p));
     if (p.kind === 'stick') { setStick(p.x - sx, p.y - sy); checkGroup(t); return; }
@@ -308,14 +324,14 @@ export function createTouch(root = document.body) {
       state.camDx += p.x - p.lx; state.camDy += p.y - p.ly; p.lx = p.x; p.ly = p.y; return;
     }
     p.samples.push({ x: p.x, y: p.y, t });
-    if (p.samples.length > 24) p.samples.splice(1, p.samples.length - 24); // keep first + recent
+    if (p.samples.length > 64) p.samples.splice(1, p.samples.length - 64); // keep first + recent
     evaluate(p, t, false);
     checkGroup(t);
   });
 
   function lift(e, cancelled) {
     const p = ptrs.get(e.pointerId); if (!p) return;
-    const t = now();
+    const t = tsOf(e);
     if (!cancelled && p.kind !== 'stick' && p.kind !== 'orbit') {
       p.x = e.clientX; p.y = e.clientY; p.maxTravel = Math.max(p.maxTravel, travel(p));
       p.samples.push({ x: p.x, y: p.y, t });
@@ -325,7 +341,6 @@ export function createTouch(root = document.body) {
     if (p.crouch) state.crouchHeld = false;
     if (p.pound) state.poundHeld = false;
     if (p.long) state.longHeld = false;
-    p.timers.forEach(clearTimeout);
     ptrs.delete(p.id);
     if (group && group.ids.has(p.id)) {
       checkGroup(t);
@@ -347,7 +362,6 @@ export function createTouch(root = document.body) {
   el.addEventListener('contextmenu', e => e.preventDefault());
 
   function resetAll() {
-    for (const p of ptrs.values()) p.timers.forEach(clearTimeout);
     ptrs.clear(); group = null; stickId = null;
     state.mx = state.my = 0; state.crouchHeld = state.poundHeld = state.longHeld = false;
     stickEl.classList.remove('on');

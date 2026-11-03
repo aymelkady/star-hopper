@@ -6,7 +6,15 @@ import * as THREE from '../three.js';
 import { CollisionWorld } from '../core/collision.js';
 import { StaticBuilder, rand, setSeed } from './builder.js';
 import { createSky } from './sky.js';
-import { buildTerrain, zoneAt, ZONE_NAMES, WATER_Y, WORLD_HALF, terrainHeight, PATHS } from './terrain.js';
+import { buildTerrain, paintTerrain, zoneAt, ZONE_NAMES, WATER_Y, WORLD_HALF } from './terrain.js';
+import { buildHorizon } from './horizon.js';
+import { createWater } from './water.js';
+import { dressWorld } from './dressing.js';
+import { PAL } from './palette.js';
+import { vcMaterial, named } from './materials.js';
+
+// Light rig tuned for the flat/toon look (punchy colours, no tone mapping).
+export const LIGHT = { key: 1.15, hemi: 0.8, back: 0.3 };
 import { createProps } from './props.js';
 import * as extra from './props-extra.js';
 import * as hub from './zones/hub.js';
@@ -24,31 +32,35 @@ export const ZONE_ENTRANCES = { meadow: { x: -27, z: 4 }, cove: { x: 27, z: 2 },
 export function createWorld({ scene, events, state, mobile = false }) {
   setSeed(20261103);
   const col = new CollisionWorld(8);
-  const staticMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-  const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+  const staticMat = named(vcMaterial(), 'static-vc');
+  const terrainMat = named(vcMaterial({ side: THREE.DoubleSide }), 'terrain');
+  const horizonMat = named(vcMaterial(), 'horizon');
 
-  // --- lights: one shadowed sun + hemisphere fill ---
-  const hemi = new THREE.HemisphereLight(0xd6f0ff, 0x7a9a5a, 1.7);
+  // --- lights: warm shadowed key + cool hemisphere fill + soft cool back/rim light ---
+  const hemi = new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, LIGHT.hemi);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff2d8, 2.4);
+  const sun = new THREE.DirectionalLight(PAL.keyLight, LIGHT.key);
   sun.castShadow = true;
   const sm = mobile ? 1024 : 2048;
   sun.shadow.mapSize.set(sm, sm);
   const sc = sun.shadow.camera; sc.left = -32; sc.right = 32; sc.top = 32; sc.bottom = -32; sc.near = 1; sc.far = 160;
-  sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
+  sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
   scene.add(sun); scene.add(sun.target);
+  const back = new THREE.DirectionalLight(PAL.backLight, LIGHT.back);
+  back.position.set(-30, 25, -40); scene.add(back);
   const SUN_OFF = new THREE.Vector3(28, 55, 22);
-  scene.fog = new THREE.Fog(0xd8f2ff, 90, 300);
+  scene.fog = new THREE.Fog(PAL.skyHorizon, 120, 480);
+  scene.background = new THREE.Color(PAL.skyHorizon);
 
   const sky = createSky(scene);
-  scene.add(buildTerrain(col, terrainMat));
+  const terrain = buildTerrain(col, terrainMat);
+  scene.add(terrain);
+  scene.add(buildHorizon(horizonMat));
 
-  // --- water (sea east of the cove + meadow pool) ---
-  const waterMat = new THREE.MeshLambertMaterial({ color: 0x35b4ec, transparent: true, opacity: 0.8, emissive: 0x0a3a60, depthWrite: false });
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(500, 700, 1, 1), waterMat);
-  sea.rotation.x = -Math.PI / 2; sea.position.set(44 + 250, WATER_Y, 0); scene.add(sea);
-  const pool = new THREE.Mesh(new THREE.CircleGeometry(7.5, 20), waterMat);
-  pool.rotation.x = -Math.PI / 2; pool.position.set(-84, -0.35, 2); scene.add(pool);
+  // --- water (sea east of the cove + meadow pool): one mesh, waves in the vertex shader ---
+  const water = createWater();
+  scene.add(water.mesh);
+  const waterMat = water.material;
 
   // --- invisible boundary walls (kids cannot run off the map edge) ---
   const W = WORLD_HALF - 1;
@@ -56,19 +68,29 @@ export function createWorld({ scene, events, state, mobile = false }) {
     col.add({ kind: 'box', minX: x - sx / 2, maxX: x + sx / 2, minY: -60, maxY: 80, minZ: z - sz / 2, maxZ: z + sz / 2, camera: false, noWallKick: true });
 
   const P = createProps({ scene, col, events, state });
-  const ctx = { THREE, col, P, extra, rand, scene, events, state, staticMat, ground: (x, z, m) => col.groundHeight(x, z, m) };
+  P.ambient = []; // (dt) => void, run from the tick event unless the world is still
+  const ctx = { THREE, col, P, extra, rand, scene, events, state, staticMat, PAL, mobile, ground: (x, z, m) => col.groundHeight(x, z, m) };
   const results = {};
+  const occluders = [];
   for (const [name, mod] of [['hub', hub], ['meadow', meadow], ['cove', cove], ['towers', towers]]) {
     const sb = new StaticBuilder(col, name);
-    ctx.sb = sb;
+    ctx.sb = sb; ctx.occlude = (x, z, r, k = 0.35) => occluders.push([x, z, r, k]);
     results[name] = mod.build(ctx) || {};
     scene.add(sb.build(staticMat));
   }
-  scatterGrass(scene, col);
+  const dressing = dressWorld({ scene, col, P, material: staticMat, mobile });
+  paintTerrain(terrain, col, occluders.concat(dressing.occluders));
   P.finalize();
 
+  // ambient animation (clouds, water, waterfall) from the shared tick event; frozen in focus mode
+  events.on('tick', ({ dt }) => {
+    if (P.still || !(dt > 0)) return;
+    sky.drift(dt); water.update(dt);
+    for (const f of P.ambient) f(dt);
+  });
+
   const world = {
-    col, props: P, scene, sun, hemi, sky, zones: results,
+    col, props: P, scene, sun, hemi, back, sky, water, waterMat, zones: results, dressing,
     spawn: results.hub.spawn || { x: 0, y: 0.1, z: 14, facing: Math.PI },
     zoneAt, zoneName: z => ZONE_NAMES[z] || z, STAR_ORDER,
     stars: P.stars,
@@ -78,8 +100,7 @@ export function createWorld({ scene, events, state, mobile = false }) {
     update(dt, ctrl, respawn) { P.update(dt, ctrl, respawn); },
     animate(dt, t, focusPos, playerPos) {
       P.animate(dt, t);
-      sky.update(dt, focusPos, P.still);
-      if (!P.still) waterMat.emissiveIntensity = 0.8 + Math.sin(t * 1.3) * 0.2;
+      sky.follow(focusPos);
       // shadow camera follows the player, snapped to texels to avoid shimmering
       const step = 64 / sm;
       const tx = Math.round(playerPos.x / step) * step, tz = Math.round(playerPos.z / step) * step;
@@ -105,7 +126,7 @@ export function createWorld({ scene, events, state, mobile = false }) {
         s.mesh.visible = s.revealed;
       }
       for (const r of Object.values(results)) if (r.apply) r.apply(save);
-      for (const cp of P.checkpoints) { cp.active = false; cp.flagMat.color.setHex(0x4f7de0); }
+      for (const cp of P.checkpoints) { cp.active = false; cp.flagMat.color.setHex(PAL.flagBlue); }
       P.activeCheckpoint = null;
       const cp = save.checkpoint && P.checkpoints.find(c => c.id === save.checkpoint.id);
       if (cp) P.activateCheckpoint(cp, true);
@@ -139,32 +160,4 @@ export function createWorld({ scene, events, state, mobile = false }) {
     },
   };
   return world;
-}
-
-// Instanced grass tufts + flowers on grassy ground (2 draw calls).
-function scatterGrass(scene, col) {
-  const tuft = new THREE.ConeGeometry(0.16, 0.55, 3); tuft.translate(0, 0.25, 0);
-  const grass = new THREE.InstancedMesh(tuft, new THREE.MeshLambertMaterial({ color: 0x5fb842, flatShading: true }), 900);
-  const flowerGeo = new THREE.IcosahedronGeometry(0.14, 0); flowerGeo.translate(0, 0.25, 0);
-  const flowers = new THREE.InstancedMesh(flowerGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), 260);
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
-  const palette = [0xff6b9a, 0xffe14a, 0xffffff, 0xb48cff, 0xff8a3c];
-  let gi = 0, fi = 0, tries = 0;
-  while ((gi < 900 || fi < 260) && tries++ < 20000) {
-    const x = (rand() * 2 - 1) * 96, z = (rand() * 2 - 1) * 96;
-    const zone = zoneAt(x, z);
-    if (zone === 'cove' || zone === 'towers' || x > 20) continue;
-    if (Math.hypot(x, z) < 5) continue;
-    const h = terrainHeight(x, z); if (h === null || h < -0.2) continue;
-    const g = col.groundHeight(x, z, h + 0.05); if (Math.abs(g - h) > 0.05) continue; // not under props
-    let path = false; for (const [x0, z0, x1, z1] of PATHS) { const dx = x1 - x0, dz = z1 - z0, t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / (dx * dx + dz * dz))); if (Math.hypot(x - x0 - dx * t, z - z0 - dz * t) < 2.6) path = true; }
-    if (path) continue;
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * 6.28);
-    p.set(x, h, z);
-    if (gi < 900) { s.setScalar(0.7 + rand() * 0.8); m.compose(p, q, s); grass.setMatrixAt(gi++, m); }
-    else if (fi < 260) { s.setScalar(1); m.compose(p, q, s); flowers.setMatrixAt(fi, m); flowers.setColorAt(fi++, c.setHex(palette[Math.floor(rand() * palette.length)])); }
-  }
-  grass.count = gi; flowers.count = fi;
-  grass.receiveShadow = true; grass.frustumCulled = false; flowers.frustumCulled = false;
-  scene.add(grass); scene.add(flowers);
 }

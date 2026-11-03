@@ -37,6 +37,8 @@ try {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMapping = THREE.NoToneMapping;        // flat/toon palette reads punchier without filmic compression
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 } catch (err) {
   webgl = false; renderer = null;
   console.warn('[star-hopper] WebGL unavailable:', err && err.message);

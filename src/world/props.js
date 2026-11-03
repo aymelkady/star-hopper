@@ -5,7 +5,8 @@
  */
 import * as THREE from '../three.js';
 import { StaticBuilder } from './builder.js';
-import { toon } from '../player/pip.js';
+import { PAL } from './palette.js';
+import { solid as toon, vcMaterial, named } from './materials.js';
 import { zoneAt, ZONE_NAMES } from './terrain.js';
 
 export const COIN_RADIUS = 1.05, MAGNET_RADIUS = 2.5, STAR_RADIUS = 1.4;
@@ -22,8 +23,19 @@ function starGeometry() {
   return g;
 }
 
+let _glowMat = null;
+function lanternGlowMat() {
+  if (_glowMat) return _glowMat;
+  const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const c = cv.getContext('2d');
+  if (c) { const g = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2); g.addColorStop(0, 'rgba(255,236,160,0.95)'); g.addColorStop(0.35, 'rgba(255,190,70,0.45)'); g.addColorStop(1, 'rgba(255,170,40,0)'); c.fillStyle = g; c.fillRect(0, 0, S, S); }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  _glowMat = named(new THREE.SpriteMaterial({ map: t, color: PAL.lanternLit, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 'lantern-glow');
+  return _glowMat;
+}
+
 export function createProps({ scene, col, events, state }) {
-  const vcMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  const vcMat = named(vcMaterial(), 'props-vc');
   const P = {
     scene, col, events, state, vcMat,
     coins: [], stars: [], checkpoints: [], switches: [], platforms: [], mushrooms: [], lanterns: [],
@@ -64,8 +76,8 @@ export function createProps({ scene, col, events, state }) {
 
   function finalizeCoins() {
     const geo = new THREE.CylinderGeometry(0.42, 0.42, 0.1, 18); geo.rotateX(Math.PI / 2);
-    const gold = toon(0xffc93a, { emissive: 0x6a4a00, emissiveIntensity: 0.6 });
-    const red = toon(0xff3f4f, { emissive: 0x700010, emissiveIntensity: 0.6 });
+    const gold = named(toon(PAL.coin, { emissive: PAL.coinEmissive, emissiveIntensity: 0.6 }), 'coin');
+    const red = named(toon(PAL.coinRed, { emissive: PAL.redEmissive, emissiveIntensity: 0.6 }), 'red-coin');
     const normal = P.coins.filter(c => c.type === 'coin'), reds = P.coins.filter(c => c.type === 'redcoin');
     P.coinMesh = new THREE.InstancedMesh(geo, gold, Math.max(1, normal.length));
     P.redMesh = new THREE.InstancedMesh(geo, red, Math.max(1, reds.length));
@@ -113,10 +125,10 @@ export function createProps({ scene, col, events, state }) {
 
   // ---------- stars ----------
   const starGeo = starGeometry();
-  const starMat = toon(0xffd84a, { emissive: 0xb07a00, emissiveIntensity: 0.7 });
-  const ghostMat = new THREE.MeshLambertMaterial({ color: 0x8fd0ff, transparent: true, opacity: 0.45, emissive: 0x2a6aa0 });
+  const starMat = named(toon(PAL.star, { emissive: PAL.starEmissive, emissiveIntensity: 0.7 }), 'star');
+  const ghostMat = named(new THREE.MeshLambertMaterial({ color: PAL.starGhost, transparent: true, opacity: 0.45, emissive: PAL.ghostEmissive }), 'star-ghost');
   const glowGeo = new THREE.SphereGeometry(1.1, 16, 10);
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0xfff2a0, transparent: true, opacity: 0.22, depthWrite: false });
+  const glowMat = named(new THREE.MeshBasicMaterial({ color: PAL.starHalo, transparent: true, opacity: 0.22, depthWrite: false }), 'star-glow');
   P.starMaterial = starMat; P.ghostMaterial = ghostMat;
   // def: {id, zone, name, x,y,z, hidden, bonus, task, target(from)}
   P.star = def => {
@@ -143,13 +155,13 @@ export function createProps({ scene, col, events, state }) {
   };
 
   // ---------- checkpoints ----------
-  const flagOff = 0x4f7de0, flagOn = 0x2fd35a;
+  const flagOff = PAL.flagBlue, flagOn = PAL.flagGreen;
   P.checkpoint = (id, x, z, opts = {}) => {
     const y = opts.y ?? P.ground(x, z, opts.maxY);
     const cp = { id, x, y, z, zone: opts.zone || zoneAt(x, z), active: false, facing: opts.facing ?? 0 };
-    cp.pole = P.vcMesh(b => { b.cyl(0, 0, 0, 0.09, 2.6, 0xf5f0e6, { collide: false, seg: 8 }); b.sphere(0, 2.65, 0, 0.16, 0xffd84a, { detail: 0 }); b.cyl(0, 0, 0, 0.55, 0.18, 0x9a8f80, { collide: false, seg: 10 }); });
+    cp.pole = P.vcMesh(b => { b.cyl(0, 0, 0, 0.09, 2.6, PAL.white, { collide: false, seg: 8 }); b.sphere(0, 2.65, 0, 0.16, PAL.gold, { detail: 0 }); b.cyl(0, 0, 0, 0.55, 0.18, PAL.woodLo, { collide: false, seg: 10 }); b.cyl(0, 0.18, 0, 0.42, 0.06, PAL.gold, { collide: false, seg: 10 }); });
     cp.pole.position.set(x, y, z);
-    cp.flagMat = toon(flagOff, { side: THREE.DoubleSide });
+    cp.flagMat = named(toon(flagOff, { side: THREE.DoubleSide }), 'checkpoint-flag');
     cp.flag = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.7, 4, 1), cp.flagMat);
     cp.flag.position.set(0.58, 2.2, 0); cp.pole.add(cp.flag);
     scene.add(cp.pole); P.checkpoints.push(cp);
@@ -170,9 +182,9 @@ export function createProps({ scene, col, events, state }) {
   P.groundSwitch = (id, x, z, onPress, opts = {}) => {
     const y = opts.y ?? P.ground(x, z);
     const sw = { id, x, y, z, zone: zoneAt(x, z), pressed: false, onPress };
-    sw.base = P.vcMesh(b => b.cyl(0, 0, 0, 1.0, 0.3, 0x6b6f86, { collide: false, seg: 12 }));
+    sw.base = P.vcMesh(b => { b.cyl(0, 0, 0, 1.0, 0.3, PAL.switchBase, { collide: false, seg: 12 }); b.cyl(0, 0.3, 0, 0.86, 0.04, PAL.gold, { collide: false, seg: 12 }); });
     sw.base.position.set(x, y, z);
-    sw.btnMat = toon(0xff5a3c);
+    sw.btnMat = named(toon(PAL.switchRed), 'switch-button');
     sw.btn = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.75, 0.35, 14), sw.btnMat);
     sw.btn.position.y = 0.45; sw.btn.castShadow = true; sw.base.add(sw.btn);
     col.add({ kind: 'cyl', x, z, y0: y - 0.5, y1: y + 0.3, r: 1.0 });
@@ -181,7 +193,7 @@ export function createProps({ scene, col, events, state }) {
   };
   P.pressSwitch = (sw, silent = false) => {
     if (sw.pressed) return;
-    sw.pressed = true; sw.btn.scale.y = 0.25; sw.btn.position.y = 0.33; sw.btnMat.color.setHex(0x3fdc6a);
+    sw.pressed = true; sw.btn.scale.y = 0.25; sw.btn.position.y = 0.33; sw.btnMat.color.setHex(PAL.switchGreen);
     if (!silent) events.emit('switch:pressed', { id: sw.id, zone: sw.zone });
     if (sw.onPress) sw.onPress(sw, silent);
   };
@@ -190,14 +202,16 @@ export function createProps({ scene, col, events, state }) {
   P.lantern = (id, x, z) => {
     const y = P.ground(x, z);
     const ln = { id, x, y, z, lit: false };
-    const post = P.vcMesh(b => { b.cyl(0, 0, 0, 0.12, 2.4, 0x6b4a2e, { collide: false, seg: 6 }); b.box(0, 2.45, 0, 0.7, 0.12, 0.7, 0x4a3420, { collide: false }); b.box(0, 3.25, 0, 0.8, 0.14, 0.8, 0x4a3420, { collide: false }); });
+    const post = P.vcMesh(b => { b.cyl(0, 0, 0, 0.12, 2.4, PAL.woodLo, { collide: false, seg: 6 }); b.cyl(0, 0, 0, 0.3, 0.3, PAL.lanternFrame, { collide: false, seg: 6 }); b.box(0, 2.45, 0, 0.7, 0.12, 0.7, PAL.lanternFrame, { collide: false }); b.cone(0, 3.18, 0, 0.62, 0.45, PAL.roofRed, { seg: 4, yaw: Math.PI / 4 }); b.sphere(0, 3.7, 0, 0.09, PAL.gold, { detail: 0 }); });
     post.position.set(x, y, z);
-    ln.mat = new THREE.MeshLambertMaterial({ color: 0x5a5560, emissive: 0x000000 });
+    ln.mat = named(new THREE.MeshLambertMaterial({ color: PAL.lanternGlass, emissive: 0x000000 }), 'lantern-glass');
     ln.head = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.65, 0.55), ln.mat);
     ln.head.position.y = 2.85; post.add(ln.head);
     col.add({ kind: 'cyl', x, z, y0: y, y1: y + 2.4, r: 0.2 });
     scene.add(post); P.lanterns.push(ln);
-    ln.light = () => { if (ln.lit) return; ln.lit = true; ln.mat.color.setHex(0xfff0a0); ln.mat.emissive.setHex(0xffb000); };
+    ln.glow = new THREE.Sprite(lanternGlowMat()); ln.glow.scale.setScalar(3.2); ln.glow.position.y = 2.85; ln.glow.visible = false; post.add(ln.glow);
+    ln.light = () => { if (ln.lit) return; ln.lit = true; ln.mat.color.setHex(PAL.lanternLit); ln.mat.emissive.setHex(PAL.lanternGlow); ln.glow.visible = true; };
+    ln.unlight = () => { ln.lit = false; ln.mat.color.setHex(PAL.lanternGlass); ln.mat.emissive.setHex(0); ln.glow.visible = false; };
     return ln;
   };
 
@@ -209,12 +223,12 @@ export function createProps({ scene, col, events, state }) {
     pl.mesh = P.vcMesh(b => {
       if (opts.look === 'log') {
         const r = sy / 2;
-        b.geo(new THREE.CylinderGeometry(r, r, sz, 10), 0, 0, 0, opts.color || 0x9b6a3c, { pitch: Math.PI / 2 });
-        b.geo(new THREE.CylinderGeometry(r * 0.75, r * 0.75, sz + 0.04, 10), 0, 0, 0, 0xe0b27a, { pitch: Math.PI / 2, jitter: 0.02 });
-        if (sx > sy * 1.2) b.geo(new THREE.CylinderGeometry(r, r, sz, 10), (sx - sy) / 2, 0, 0, opts.color || 0x9b6a3c, { pitch: Math.PI / 2 }), b.geo(new THREE.CylinderGeometry(r, r, sz, 10), -(sx - sy) / 2, 0, 0, opts.color || 0x9b6a3c, { pitch: Math.PI / 2 });
+        b.geo(new THREE.CylinderGeometry(r, r, sz, 10), 0, 0, 0, opts.color || PAL.bark, { pitch: Math.PI / 2 });
+        b.geo(new THREE.CylinderGeometry(r * 0.75, r * 0.75, sz + 0.04, 10), 0, 0, 0, PAL.logCore, { pitch: Math.PI / 2, jitter: 0.02 });
+        if (sx > sy * 1.2) b.geo(new THREE.CylinderGeometry(r, r, sz, 10), (sx - sy) / 2, 0, 0, opts.color || PAL.bark, { pitch: Math.PI / 2 }), b.geo(new THREE.CylinderGeometry(r, r, sz, 10), -(sx - sy) / 2, 0, 0, opts.color || PAL.bark, { pitch: Math.PI / 2 });
       } else {
-        b.box(0, 0, 0, sx, sy, sz, opts.color || 0xc9b8e8, { collide: false });
-        b.box(0, sy / 2 + 0.02, 0, sx - 0.3, 0.06, sz - 0.3, 0xffe27a, { collide: false, jitter: 0.02 });
+        b.box(0, 0, 0, sx, sy, sz, opts.color || PAL.platform, { collide: false, shade: { under: 0.3 } });
+        b.box(0, sy / 2 + 0.02, 0, sx - 0.3, 0.06, sz - 0.3, PAL.platformTrim, { collide: false, jitter: 0.02 });
       }
     });
     pl.mesh.receiveShadow = true;
@@ -260,10 +274,10 @@ export function createProps({ scene, col, events, state }) {
     const capR = 1.3 * s, stemH = 1.2 * s;
     const mu = { x, y, z, apex, sq: 0 };
     mu.mesh = P.vcMesh(b => {
-      b.cyl(0, 0, 0, 0.38 * s, stemH, 0xfff1d6, { collide: false, seg: 8, rTop: 0.3 * s });
-      b.geo(new THREE.SphereGeometry(capR, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0, stemH - 0.1, 0, opts.color || 0xff4f7a, { sy: 0.55 });
-      for (let i = 0; i < 6; i++) { const a = i * 1.05; b.sphere(Math.cos(a) * capR * 0.6, stemH + 0.35 * s, Math.sin(a) * capR * 0.6, 0.17 * s, 0xffffff, { detail: 0, sy: 0.5 }); }
-      b.sphere(0, stemH + 0.62 * s, 0, 0.2 * s, 0xffffff, { detail: 0, sy: 0.5 });
+      b.cyl(0, 0, 0, 0.38 * s, stemH, PAL.mushStem, { collide: false, seg: 8, rTop: 0.3 * s });
+      b.geo(new THREE.SphereGeometry(capR, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0, stemH - 0.1, 0, opts.color || PAL.mushRed, { sy: 0.55, shade: { under: 0.45 } });
+      for (let i = 0; i < 6; i++) { const a = i * 1.05; b.sphere(Math.cos(a) * capR * 0.6, stemH + 0.35 * s, Math.sin(a) * capR * 0.6, 0.17 * s, PAL.white, { detail: 0, sy: 0.5 }); }
+      b.sphere(0, stemH + 0.62 * s, 0, 0.2 * s, PAL.white, { detail: 0, sy: 0.5 });
     });
     mu.mesh.position.set(x, y, z);
     col.add({ kind: 'cyl', x, z, y0: y, y1: y + stemH, r: 0.38 * s });

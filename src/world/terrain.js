@@ -7,6 +7,7 @@
 import * as THREE from '../three.js';
 import { Heightfield } from '../core/collision.js';
 import { rand } from './builder.js';
+import { PAL } from './palette.js';
 
 export const WORLD_HALF = 100;
 export const WATER_Y = -0.8;
@@ -44,28 +45,64 @@ export function terrainHeight(x, z) {
   return h;
 }
 
-function onPath(x, z) {
+// distance from (x,z) to the nearest dirt path centre line
+export function pathDist(x, z) {
+  let best = 1e9;
   for (const [x0, z0, x1, z1] of PATHS) {
     const dx = x1 - x0, dz = z1 - z0, L2 = dx * dx + dz * dz;
     const t = clamp01(((x - x0) * dx + (z - z0) * dz) / L2);
-    if (Math.hypot(x - (x0 + dx * t), z - (z0 + dz * t)) < 2.2) return true;
+    const d = Math.hypot(x - (x0 + dx * t), z - (z0 + dz * t));
+    if (d < best) best = d;
   }
-  return false;
+  return best;
+}
+// 0 = grass, 1 = beach sand (cove side of the world)
+export function sandAmount(x, z) {
+  if (z < -30 && Math.abs(x) < 46) return 0;
+  return smooth(15, 23, x);
 }
 
-function faceColor(cx, cz, h, c) {
-  const zone = zoneAt(cx, cz);
-  if (onPath(cx, cz) && h > WATER_Y + 0.2) return c.setHex(0xd8b273);
-  if (zone === 'cove' || (cx > 20 && zone !== 'towers')) {
-    if (h > -0.25) return c.setHex(0xf4dd98);
-    if (h > -1.6) return c.setHex(0xdcc07c);
-    return c.setHex(0xb59f72);
+// smooth value noise in [0,1]
+function hash(i, j) { let h = (i * 374761393 + j * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
+export function noise2(x, z) {
+  const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j;
+  const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const a = hash(i, j), b = hash(i + 1, j), c = hash(i, j + 1), d = hash(i + 1, j + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+export const fbm = (x, z) => noise2(x, z) * 0.6 + noise2(x * 2.3 + 17, z * 2.3 - 9) * 0.3 + noise2(x * 5.1 - 3, z * 5.1 + 7) * 0.1;
+
+const C = {};
+for (const k of ['grass', 'grassHi', 'grassLo', 'grassHub', 'grassTop', 'earth', 'earthHi', 'sand', 'sandWet', 'sandDeep', 'leafLo'])
+  C[k] = new THREE.Color(PAL[k]);
+const _g = new THREE.Color(), _e = new THREE.Color();
+
+// Colour of the ground at a grid vertex (before ambient occlusion).
+export function groundColor(x, z, h, out) {
+  // grass: two-tone noise (base -> highlight), hollows + low ground toward shadow green
+  const n = fbm(x * 0.07, z * 0.07);
+  _g.copy(zoneAt(x, z) === 'hub' ? C.grassHub : C.grass).lerp(C.grassHi, smooth(0.5, 0.78, n) * 0.85);
+  _g.lerp(C.grassLo, smooth(0.36, 0.14, n) * 0.55);
+  if (h > 4) _g.lerp(C.grassTop, smooth(4, 11, h) * 0.6);
+  // dirt paths with a soft edge and a lighter centre
+  const pd = pathDist(x, z);
+  if (pd < 3 && h > WATER_Y + 0.2) {
+    _e.copy(C.earth).lerp(C.earthHi, smooth(1.4, 0.2, pd) * 0.6);
+    _e.multiplyScalar(0.94 + noise2(x * 0.6, z * 0.6) * 0.12);
+    _g.lerp(_e, smooth(2.7, 1.7, pd));
   }
-  if (cz < -30 && Math.abs(cx) < 46) return c.setHex(0x9ccf6a);
-  if (h < -0.5) return c.setHex(0xcbbd86);
-  if (h > 8) return c.setHex(0xa9e06c);
-  if (h > 3.5) return c.setHex(0x8fd65c);
-  return c.setHex(zone === 'hub' ? 0x86d45c : 0x72c44c);
+  // underwater (meadow pool) = wet sand
+  if (h < -0.45 && x < 0) _g.lerp(C.sandWet, smooth(-0.45, -0.9, h));
+  // beach
+  const sa = sandAmount(x, z);
+  if (sa > 0) {
+    let s;
+    if (h > -0.25) s = _e.copy(C.sand).lerp(C.grassHi, 0).multiplyScalar(0.97 + noise2(x * 0.3, z * 0.3) * 0.06);
+    else if (h > -1.6) s = _e.copy(C.sand).lerp(C.sandWet, smooth(-0.25, -1.0, h));
+    else s = _e.copy(C.sandWet).lerp(C.sandDeep, smooth(-1.6, -3.5, h));
+    _g.lerp(s, sa);
+  }
+  return out.copy(_g);
 }
 
 export function buildTerrain(col, material) {
@@ -82,30 +119,38 @@ export function buildTerrain(col, material) {
   }
   col.hf = hf;
 
-  const pos = [], cols = [], color = new THREE.Color();
-  const V = (i, j) => [x0 + i * cell, hf.h[hf.vi(i, j)], z0 + j * cell];
-  const tri = (p, q, r, cc) => {
-    pos.push(...p, ...q, ...r);
-    const k = 1 + (rand() - 0.5) * 0.1;
-    for (let t = 0; t < 3; t++) cols.push(cc.r * k, cc.g * k, cc.b * k);
+  const pos = [], cols = [], gidx = [], jit = [];
+  const V = (i, j) => [x0 + i * cell, hf.h[hf.vi(i, j)], z0 + j * cell, hf.vi(i, j)];
+  const tri = (p, q, r) => {
+    pos.push(p[0], p[1], p[2], q[0], q[1], q[2], r[0], r[1], r[2]);
+    const k = 1 + (rand() - 0.5) * 0.06;
+    gidx.push(p[3], q[3], r[3]); jit.push(k, k, k); cols.push(0, 0, 0, 0, 0, 0, 0, 0, 0);
   };
   const isHole = (i, j) => i < 0 || j < 0 || i >= n || j >= n ? false : !!hf.hole[j * n + i];
-  const rock = new THREE.Color(0x8e8199), rock2 = new THREE.Color(0x7a6e88);
+  // layered sandstone cliff skirts along the abyss: grass lip, then bands
+  const bands = [PAL.sandstone, PAL.sandstone2, PAL.sandstone4, PAL.sandstone3, PAL.sandstone2, PAL.sandstone].map(h => new THREE.Color(h));
+  const lip = new THREE.Color(PAL.grassLo), cc = new THREE.Color();
+  const depths = [0, 0.8, 1.2]; for (let d = 3.5; d < 46; d += 2.6 + (depths.length % 3) * 0.6) depths.push(d);
+  const skirt = (P, Q) => {
+    for (let k = 0; k < depths.length - 1; k++) {
+      const a = depths[k], b = depths[k + 1];
+      const P1 = [P[0], Math.max(-45, P[1] - a), P[2], -1], Q1 = [Q[0], Math.max(-45, Q[1] - a), Q[2], -1];
+      const P2 = [P[0], Math.max(-45, P[1] - b), P[2], -1], Q2 = [Q[0], Math.max(-45, Q[1] - b), Q[2], -1];
+      if (k === 0) cc.copy(lip); else if (k === 1) cc.set(PAL.earthLo); else cc.copy(bands[k % bands.length]);
+      cc.multiplyScalar(1 - Math.min(0.35, a / 120) + (rand() - 0.5) * 0.05);
+      const o = cols.length;
+      tri(P1, Q2, Q1); tri(P1, P2, Q2);
+      for (let v = o; v < cols.length; v += 3) { cols[v] = cc.r; cols[v + 1] = cc.g; cols[v + 2] = cc.b; }
+    }
+  };
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     if (isHole(i, j)) continue;
-    const A = V(i, j), B = V(i + 1, j), C = V(i, j + 1), D = V(i + 1, j + 1);
+    const A = V(i, j), B = V(i + 1, j), C2 = V(i, j + 1), D = V(i + 1, j + 1);
     // triangle split must match Heightfield.sample: (a,b,d) when fx>=fz, (a,d,c) otherwise
-    faceColor((A[0] + B[0] + D[0]) / 3, (A[2] + B[2] + D[2]) / 3, (A[1] + B[1] + D[1]) / 3, color); tri(A, D, B, color);
-    faceColor((A[0] + C[0] + D[0]) / 3, (A[2] + C[2] + D[2]) / 3, (A[1] + C[1] + D[1]) / 3, color); tri(A, C, D, color);
-    // cliff skirts along hole edges
-    const skirt = (P, Q) => {
-      const P2 = [P[0], -45, P[2]], Q2 = [Q[0], -45, Q[2]];
-      const cc = rand() < 0.5 ? rock : rock2;
-      tri(P, Q2, Q, cc); tri(P, P2, Q2, cc);
-    };
+    tri(A, D, B); tri(A, C2, D);
     if (isHole(i, j - 1)) skirt(B, A);
-    if (isHole(i, j + 1)) skirt(C, D);
-    if (isHole(i - 1, j)) skirt(A, C);
+    if (isHole(i, j + 1)) skirt(C2, D);
+    if (isHole(i - 1, j)) skirt(A, C2);
     if (isHole(i + 1, j)) skirt(D, B);
   }
   const g = new THREE.BufferGeometry();
@@ -115,5 +160,43 @@ export function buildTerrain(col, material) {
   g.computeBoundingSphere();
   const mesh = new THREE.Mesh(g, material);
   mesh.receiveShadow = true; mesh.name = 'terrain';
+  mesh.userData = { gidx: Int32Array.from(gidx), jit: Float32Array.from(jit), hf, n, cell, x0, z0 };
+  paintTerrain(mesh, null);
   return mesh;
+}
+
+// (Re)paint terrain vertex colours.  With a collision world: fake ambient occlusion — darken the
+// ground around the base of walls, trunks, pillars, rocks and under big props.
+export function paintTerrain(mesh, col, extraOccluders = []) {
+  const { gidx, jit, hf, n, cell, x0, z0 } = mesh.userData;
+  const N = (n + 1) * (n + 1), gc = new Float32Array(N * 3), c = new THREE.Color();
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+    const vi = hf.vi(i, j), x = x0 + i * cell, z = z0 + j * cell, h = hf.h[vi];
+    groundColor(x, z, h, c);
+    let ao = 1;
+    if (col) {
+      const R = 3.2, list = col.query(x - R, z - R, x + R, z + R);
+      for (const o of list) {
+        if (!o.solid || o.platform || o.bMaxY < h + 0.25 || o.bMinY > h + 1.5) continue;
+        const dx = Math.max(o.bMinX - x, 0, x - o.bMaxX), dz = Math.max(o.bMinZ - z, 0, z - o.bMaxZ);
+        const tall = Math.min(1, (o.bMaxY - h) / 2.5);
+        let d = Math.hypot(dx, dz);
+        if (o.kind === 'cyl') d = Math.max(0, Math.hypot(x - o.x, z - o.z) - o.r);
+        else if (o.kind === 'sphere') d = Math.max(0, Math.hypot(x - o.x, z - o.z) - o.r * 0.8);
+        if (d < R) ao = Math.min(ao, 1 - 0.42 * tall * (1 - d / R) * (1 - d / R));
+      }
+      for (const [ox, oz, r, k] of extraOccluders) {
+        const d = Math.hypot(x - ox, z - oz);
+        if (d < r) ao = Math.min(ao, 1 - k * (1 - d / r) * (1 - d / r));
+      }
+    }
+    gc[vi * 3] = c.r * ao; gc[vi * 3 + 1] = c.g * ao; gc[vi * 3 + 2] = c.b * ao;
+  }
+  const arr = mesh.geometry.attributes.color.array;
+  for (let v = 0; v < gidx.length; v++) {
+    const g = gidx[v]; if (g < 0) continue;
+    const k = jit[v];
+    arr[v * 3] = gc[g * 3] * k; arr[v * 3 + 1] = gc[g * 3 + 1] * k; arr[v * 3 + 2] = gc[g * 3 + 2] * k;
+  }
+  mesh.geometry.attributes.color.needsUpdate = true;
 }

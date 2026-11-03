@@ -33,7 +33,7 @@ export function init(ctx) {
   const card = createQuestCard({ onSkip: () => skip(), onIntroTap: () => endIntro() });
   card.show(false);
 
-  let current = null, celebrateT = 0, introT = 0, still = false, active = false;
+  let current = null, celebrateT = 0, introT = 0, still = false, active = false, introsShown = 0, lastCelebration = '';
   let quest = null;             // { date, stars:[ids], celebrated }
   const skipRank = new Map(); let skipN = 0;
   let route = { target: null, via: null };
@@ -131,7 +131,7 @@ export function init(ctx) {
     if (!quest || quest.celebrated) return;
     const cur = current && current.id;
     card.intro(quest.stars.map(id => ({ text: shortText(byId.get(id)), done: have(id), current: id === cur })));
-    introT = INTRO_S;
+    introT = INTRO_S; introsShown++;
   }
   function endIntro() { if (card.mode !== 'intro') return; introT = 0; card.objective(); refreshCard(); }
   function questJustDone() {
@@ -166,7 +166,8 @@ export function init(ctx) {
     if (!active) return;
     const n = count();
     events.emit('ui:celebrate', { kind: 'star', id: p.id, name: p.name, count: n, total: TOTAL });
-    card.celebrate(`⭐ Star ${n} / ${TOTAL}! Nice!`, p.name);
+    lastCelebration = `⭐ Star ${n} / ${TOTAL}! Nice!`;
+    card.celebrate(lastCelebration, p.name);
     celebrateT = CELEBRATE_S; introT = 0;
   });
   events.on('star:revealed', p => { if (active && current && p.id === current.id) advance(true); else refreshCard(); });
@@ -207,5 +208,7 @@ export function init(ctx) {
     skip,
     beacon,
     get celebrating() { return celebrateT > 0; },
+    get introsShown() { return introsShown; },
+    get lastCelebration() { return lastCelebration; },
   };
 }

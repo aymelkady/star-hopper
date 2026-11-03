@@ -1,21 +1,41 @@
 // Splash Cove (east): log ride, 5 lanterns, red coins on the rocks, ghost race along the pier.
 import { nearest } from './meadow.js';
-const WOOD = 0xb07a48, WOOD2 = 0x8f5f36, SAND = 0xf0d79a, ROCK = 0x8f8aa0, ROCK2 = 0x7a7590, PALM = 0x9a6a3c, LEAF = 0x3fbf5a;
+import { PAL } from '../palette.js';
+const WOOD = PAL.wood, WOOD2 = PAL.woodLo, SAND = PAL.sand, PALM = PAL.bark, PALM2 = PAL.wood;
+const k2 = x => (x > 35 ? PAL.towerBlue : PAL.flowerPink);
+const ROCKS = [PAL.sandstone, PAL.sandstone2, PAL.sandstone4, PAL.sandstone3];
 
 function palm(sb, THREE, g, x, z, lean = 0.25, yaw = 0) {
   const y = g(x, z);
   let px = x, py = y - 0.2, pz = z;
-  for (let i = 0; i < 5; i++) { // trunk segments leaning outward
+  for (let i = 0; i < 5; i++) { // trunk segments leaning outward (same colliders as before)
     const dx = Math.sin(yaw) * lean * i * 0.35, dz = Math.cos(yaw) * lean * i * 0.35;
-    sb.cyl(px + dx, py, pz + dz, 0.32 - i * 0.03, 1.3, i % 2 ? PALM : 0x83572f, { seg: 6, collide: i < 2 });
+    sb.cyl(px + dx, py, pz + dz, 0.32 - i * 0.03, 1.3, i % 2 ? PALM2 : PALM, { seg: 6, collide: i < 2 });
+    if (i < 4) sb.cyl(px + dx, py + 1.15, pz + dz, 0.36 - i * 0.03, 0.12, PAL.barkLo, { seg: 6, collide: false, jitter: 0 });
     py += 1.2;
     if (i === 4) { px += dx; pz += dz; }
   }
-  for (let k = 0; k < 6; k++) {
-    const a = k * 1.047;
-    sb.geo(new THREE.ConeGeometry(0.5, 3.2, 4), px + Math.cos(a) * 1.3, py + 0.1, pz + Math.sin(a) * 1.3, LEAF, { yaw: -a, roll: Math.PI / 2 - 0.35, sz: 0.3 });
+  // two layers of drooping fronds
+  for (let k = 0; k < 7; k++) {
+    const a = k * 0.8976 + yaw;
+    sb.geo(new THREE.ConeGeometry(0.55, 3.4, 4), px + Math.cos(a) * 1.4, py + 0.05, pz + Math.sin(a) * 1.4, k % 2 ? PAL.palmLeaf : PAL.palmLeafHi, { yaw: -a, roll: Math.PI / 2 - 0.45, sz: 0.28 });
   }
-  sb.sphere(px, py - 0.1, pz, 0.45, 0x6b4a2a, { detail: 0 });
+  for (let k = 0; k < 4; k++) {
+    const a = k * 1.571 + yaw + 0.4;
+    sb.geo(new THREE.ConeGeometry(0.4, 2.2, 4), px + Math.cos(a) * 0.9, py + 0.45, pz + Math.sin(a) * 0.9, PAL.leafLime, { yaw: -a, roll: Math.PI / 2 - 0.1, sz: 0.28 });
+  }
+  for (let k = 0; k < 3; k++) sb.sphere(px + Math.cos(k * 2.1) * 0.35, py - 0.2, pz + Math.sin(k * 2.1) * 0.35, 0.26, PAL.barkLo, { detail: 0 }); // coconuts
+}
+
+// layered sandstone sea stack: collider = the original cylinder; bands + green top are decor
+function stack(sb, x, z, r, y0, top, i, opts = {}) {
+  sb.cyl(x, y0, z, r, top - y0, ROCKS[i % 4], { seg: 7, rTop: r * 0.85, ...opts });
+  const H = top - y0;
+  for (let k = 1; k * 1.3 < H - 0.6; k++) {
+    const y = y0 + k * 1.3, t = (y - y0) / H, rr = r + (r * 0.85 - r) * t;
+    sb.cyl(x, y, z, rr + 0.06, 0.5, ROCKS[(i + k) % 4], { seg: 7, collide: false, jitter: 0.03 });
+  }
+  sb.cyl(x, top - 0.12, z, r * 0.85 + 0.05, 0.14, PAL.grass, { seg: 7, collide: false, jitter: 0.04 });
 }
 
 export function build({ THREE, sb, P, extra, ground: g }) {
@@ -27,7 +47,7 @@ export function build({ THREE, sb, P, extra, ground: g }) {
   P.platform({ id: 'log-a', look: 'log', size: [3, 1, 4], path: [[60.5, -0.3, -24], [70, -0.3, -24]], speed: 2.6, pause: 0.7 });
   P.platform({ id: 'log-b', look: 'log', size: [3, 1, 4], path: [[75, -0.3, -24.5], [75, -0.3, -33.5]], speed: 2.2, pause: 0.7 });
   P.platform({ id: 'log-c', look: 'log', size: [3, 1, 4], path: [[79.5, -0.3, -34], [88.5, -0.3, -34]], speed: 2.8, pause: 0.7 });
-  sb.cyl(94, -6, -34, 4.2, 7, SAND, { seg: 10 });
+  sb.cyl(94, -6, -34, 4.2, 7, SAND, { seg: 10, shade: { ao: 6 } });
   palm(sb, THREE, g, 95.6, -35.6, 0.3, 2.2);
   star('cove-1', 'Cross the log ride', 93, -33, 1.6).task = 'reach';
   P.coinLine(44, -24, 54, -24, 4, 1, { abs: 1.1 });
@@ -60,10 +80,12 @@ export function build({ THREE, sb, P, extra, ground: g }) {
   const rocks = [[56, 14, 0.8, 2], [61, 19, 1.6, 1.8], [66, 14, 2.4, 1.8], [71, 20, 1.8, 1.8], [76, 26, 3.0, 1.8], [73, 32, 2.2, 1.8], [78, 38, 3.6, 1.8], [84, 44, 4.4, 2]];
   const rockStar = star('cove-3', 'Red coins on the rocks', 90, 51, 1.6, { y: 5.2, hidden: true, task: 'redcoins' });
   rocks.forEach(([x, z, top, r], i) => {
-    sb.cyl(x, -6, z, r, top + 6, i % 2 ? ROCK : ROCK2, { seg: 7, rTop: r * 0.85 });
+    stack(sb, x, z, r, -6, top, i);
     P.redCoin('cove-3', i, x, top + 1.1, z);
   });
-  sb.cyl(90, -6, 51, 3.8, 11.2, ROCK, { seg: 8, rTop: 3.4 });
+  sb.cyl(90, -6, 51, 3.8, 11.2, PAL.sandstone, { seg: 8, rTop: 3.4 });
+  for (let k = 1; k < 8; k++) sb.cyl(90, -6 + k * 1.4, 51, 3.8 - k * 0.05 + 0.06, 0.55, ROCKS[k % 4], { seg: 8, collide: false, jitter: 0.03 });
+  sb.cyl(90, 5.08, 51, 3.45, 0.14, PAL.grass, { seg: 8, collide: false });
   P.coinRing(90, 51, 2.3, 8, 1, { abs: 5.2 });
   rockStar.target = from => nearest(P.coins.filter(c => c.starId === 'cove-3' && c.alive), from);
 
@@ -83,12 +105,26 @@ export function build({ THREE, sb, P, extra, ground: g }) {
   // ---- bonus star + decoration ----
   star('bonus-cove', '100 coins in Splash Cove', 34, 0, 1.6, { hidden: true, bonus: true, task: 'bonus' });
   for (const [x, z, l, y] of [[32, 20, 0.25, 1], [44, -6, 0.3, 2.5], [30, 36, 0.25, 0.4], [40, 56, 0.3, 2], [36, -22, 0.2, 3.5], [46, 26, 0.3, 1.8]]) palm(sb, THREE, g, x, z, l, y);
-  for (const [x, z, c] of [[38, -4, 0xff5a5a], [33, 33, 0x5ab8ff]]) {
+  for (const [x, z, c] of [[38, -4, PAL.umbrellaRed], [33, 33, PAL.umbrellaBlue]]) {
     const y = g(x, z);
-    sb.cyl(x, y - 0.2, z, 0.08, 2.6, 0xffffff, { seg: 5, collide: false });
-    sb.cone(x, y + 2.2, z, 1.8, 0.8, c, { seg: 8 });
+    sb.cyl(x, y - 0.2, z, 0.08, 2.6, PAL.white, { seg: 5, collide: false });
+    sb.cone(x, y + 2.2, z, 1.8, 0.8, c, { seg: 8, shade: { under: 0.35 } });
+    for (let k = 0; k < 4; k++) sb.geo(new THREE.ConeGeometry(1.84, 0.84, 8, 1, true, k * Math.PI / 2, Math.PI / 4), x, y + 2.61, z, PAL.white, { jitter: 0 });
+    sb.box(x + 1.4, y + 0.06, z + 0.4, 1.0, 0.04, 1.9, k2(x), { collide: false, jitter: 0, yaw: 0.3 }); // beach towel
   }
-  for (const [x, z] of [[47, -14], [41, 22], [46, 46]]) sb.slab(x, g(x, z) + 1, z, 1.2, 1.2, 1.2, 0xc48a52, { yaw: x });
+  for (const [x, z] of [[47, -14], [41, 22], [46, 46]]) sb.slab(x, g(x, z) + 1, z, 1.2, 1.2, 1.2, PAL.wood, { yaw: x });
+  // sea shells + starfish on the sand
+  for (const [x, z, c] of [[35, 8, PAL.flowerPink], [43, 12, PAL.mushOrange], [30, 26, PAL.flowerWhite], [39, 38, PAL.flowerPink], [44, -10, PAL.mushOrange], [36, 54, PAL.flowerWhite], [42, 30, PAL.flowerYellow]]) {
+    const y = g(x, z);
+    for (let k = 0; k < 5; k++) { const a = k * 1.2566 + x; sb.geo(new THREE.ConeGeometry(0.09, 0.32, 3), x + Math.cos(a) * 0.14, y + 0.04, z + Math.sin(a) * 0.14, c, { yaw: -a, roll: Math.PI / 2, sy: 1, sz: 0.4, jitter: 0 }); }
+  }
+  // distant layered sandstone sea stacks + arches (decor, out in the sea)
+  for (const [x, z, r, h] of [[118, -70, 9, 26], [132, -20, 7, 18], [126, 40, 10, 30], [112, 88, 8, 20], [150, 10, 6, 14], [104, -110, 7, 22]]) {
+    const n = Math.ceil((h + 8) / 2.4), topY = -8 + n * 2.4;
+    for (let k = 0; k < n; k++) sb.cyl(x, -8 + k * 2.4, z, r * (1 - k * 0.012), 2.4, ROCKS[k % 4], { seg: 8, collide: false, jitter: 0.04 });
+    sb.cyl(x, topY - 0.3, z, r * (1 - n * 0.012) + 0.15, 0.6, PAL.grass, { seg: 8, collide: false });
+    sb.sphere(x + r * 0.3, topY + 0.4, z, r * 0.45, PAL.bush, { detail: 1, sy: 0.6, shade: { under: 0.4 } });
+  }
 
   // ---- more coins ----
   P.coinLine(31, -8, 46, -14, 6, 1);
@@ -104,9 +140,9 @@ export function build({ THREE, sb, P, extra, ground: g }) {
     apply(save) {
       const done = save.stars.includes('cove-2');
       for (const sw of P.switches) if (sw.zone === 'cove') {
-        sw.pressed = false; sw.btn.scale.y = 1; sw.btn.position.y = 0.45; sw.btnMat.color.setHex(0xff5a3c);
+        sw.pressed = false; sw.btn.scale.y = 1; sw.btn.position.y = 0.45; sw.btnMat.color.setHex(PAL.switchRed);
       }
-      for (const l of lanterns) { l.lit = false; l.mat.color.setHex(0x5a5560); l.mat.emissive.setHex(0); }
+      for (const l of lanterns) l.unlight();
       if (done) for (const sw of P.switches) if (sw.zone === 'cove') P.pressSwitch(sw, true);
       race.cancel();
     },
