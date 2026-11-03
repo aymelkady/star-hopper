@@ -67,7 +67,7 @@ const yaw = page => page.evaluate(() => window.__game.camera.yaw);
 const pos = page => page.evaluate(() => { const p = window.__game.player.position; return { x: p.x, y: p.y, z: p.z }; });
 const settle = page => page.waitForFunction(() => window.__game.player.grounded && window.__game.player.mode === 'ground', null, { timeout: 5000 }).catch(() => {});
 async function home(page) {
-  await page.evaluate(() => { const g = window.__game; g.respawn ? 0 : 0; const s = g.world.respawnPoint(); g.player.teleport(s.x, s.y, s.z, s.facing); g.camera.snap(g.player.position, g.player.facing); });
+  await page.evaluate(() => { const g = window.__game; const s = g.world.respawnPoint(); g.player.teleport(s.x, s.y, s.z, s.facing); g.camera.snap(g.player.position, g.player.facing); });
   await settle(page); await sleep(150);
 }
 async function airborne(page, up = 7) {

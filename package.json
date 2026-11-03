@@ -8,7 +8,8 @@
     "dev": "node serve.mjs",
     "build": "node build.mjs",
     "test": "node test/smoke.spec.mjs",
-    "test:fx": "node test/audio-fx.spec.mjs"
+    "test:fx": "node test/audio-fx.spec.mjs",
+    "test:gestures": "node test/gestures.spec.mjs"
   },
   "license": "MIT",
   "devDependencies": {
