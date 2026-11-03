@@ -68,10 +68,10 @@ const CSS = `
   border-radius: 50%; border: 3px solid #fff; background: rgba(255,255,255,.12); box-sizing: border-box; }
 #gs-stick .gs-dot { position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 50%; background: #fff; transform: translate(-50%,-50%); }
 .gs-fx { position: absolute; left: 0; top: 0; pointer-events: none; opacity: 0; will-change: transform, opacity; }
-.gs-streak { width: 110px; height: 10px; margin: -5px 0 0 0; border-radius: 5px; transform-origin: 0 50%;
+.gs-streak { width: 140px; height: 12px; margin: -6px 0 0 0; border-radius: 6px; transform-origin: 0 50%;
   background: linear-gradient(90deg, rgba(255,255,255,0), #fff 70%, #fff); box-shadow: 0 0 8px rgba(255,255,255,.8); }
 .gs-ring-fx { width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; border: 4px solid #fff; box-sizing: border-box; }
-#gs-tutorial { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: rgba(20,14,40,.62);
+#gs-tutorial { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: rgba(20,14,40,.94);
   font-family: var(--font, system-ui, sans-serif); color: #fff; touch-action: none; -webkit-user-select: none; user-select: none;
   animation: gs-fade .25s ease-out; padding: 16px; box-sizing: border-box; }
 #gs-tutorial[hidden] { display: none; }
@@ -81,7 +81,8 @@ const CSS = `
 .gs-pad { position: relative; width: 180px; height: 120px; border-radius: 18px; border: 3px solid rgba(255,255,255,.75); background: rgba(255,255,255,.1); overflow: hidden; }
 .gs-pad::after { content: ''; position: absolute; left: 50%; top: 10px; bottom: 10px; border-left: 2px dashed rgba(255,255,255,.35); }
 .gs-hand { position: absolute; font-size: 46px; line-height: 1; left: 50%; top: 50%; transform: translate(-50%,-30%); filter: drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
-.gs-cap { font-size: 23px; white-space: nowrap; font-weight: 800; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+.gs-cap { font-size: 23px; line-height: 1.15; font-weight: 800; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+.gs-cap b { color: #ffd84a; font-weight: 900; }
 .gs-hint { margin-top: 18px; font-size: 22px; text-align: center; opacity: 0; transition: opacity .3s; }
 #gs-tutorial.ready .gs-hint { opacity: .9; animation: gs-pulse 1.2s ease-in-out infinite; }
 .gs-a-drag .gs-hand { left: 25%; animation: gs-drag 1.8s ease-in-out infinite; }
@@ -381,7 +382,7 @@ export function createTouch(root = document.body) {
       tut.id = 'gs-tutorial';
       tut.setAttribute('role', 'dialog'); tut.setAttribute('aria-label', 'How to move');
       tut.innerHTML = `<div><h2>How to move</h2><div class="gs-cards">${TUTORIAL.map(c =>
-        `<div class="gs-card ${c.cls}"><div class="gs-pad"><span class="gs-hand" aria-hidden="true">👆</span></div><div class="gs-cap">${c.caption}</div></div>`).join('')
+        `<div class="gs-card ${c.cls}"><div class="gs-pad"><span class="gs-hand" aria-hidden="true">👆</span></div><div class="gs-cap">${c.caption.replace(': ', ':<br> <b>')}</b></div></div>`).join('')
       }</div><div class="gs-hint">Tap to play!</div></div>`;
       const stop = e => { e.preventDefault(); e.stopPropagation(); };
       tut.addEventListener('pointerdown', stop);
