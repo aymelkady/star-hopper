@@ -3,7 +3,7 @@
 An original 3D collect-a-thon platformer that runs in the browser, made for 10-year-olds
 (designed with ADHD-friendly rules: one clear goal, instant feedback, failure is free).
 You play **Pip**, a round little fox-bot, hopping around a Treehouse Hub and three zones
-(Sunny Meadow, Splash Cove and Sky Towers) to find **15 stars**.
+(Sunny Meadow, Splash Cove and Sky Towers) to find **20 stars** (15 platforming stars plus 5 optional focus-training challenge stars).
 Everything is procedural geometry, so there is nothing to download and no loading screens.
 Works on desktop (keyboard or gamepad), iPad (Safari) and Android (Chrome) with touch controls.
 
@@ -15,6 +15,7 @@ Works on desktop (keyboard or gamepad), iPad (Safari) and Android (Chrome) with 
 | Jump (hold = higher, 3 in a row = triple jump) | `Space` | A | Tap the right half |
 | Long jump (while running) | `Shift` + `Space` | B | Swipe sideways |
 | Ground pound (in the air) | `E`, `X`, `C` or `Ctrl` | X | Swipe down |
+| Crouch (on the ground; crouch + jump = long jump or backflip) | hold `C`, `X` or `Ctrl` | hold X | Swipe down and hold |
 | Camera | `Q` / `E`, arrow keys (when WASD moves), mouse drag | Right stick | Slow drag on the right half |
 | Camera behind Pip | `R` | Y | |
 | Focus mode | `F` | View / Back | Eye button (top right) |
@@ -59,7 +60,7 @@ Plugin debug hooks: `__game.plugins.objectives.{current(), order(), quest(), ski
 _Canonical copy: [docs/PARENT-GUIDE.md](docs/PARENT-GUIDE.md)._
 
 **What it is.** A short-session 3D platformer. Your child plays Pip, a little fox-bot, and collects
-15 stars across three small worlds. There is no violence, no reading beyond a few words, no
+20 stars across three small worlds (5 of them are optional focus-training challenges). There is no violence, no reading beyond a few words, no
 accounts, no ads, no internet connection after the page loads. Progress saves in the browser
 on this device.
 
@@ -92,6 +93,13 @@ no game-over), and has a built-in break timer.
   and the game picks the next one. Nothing is locked.
 - **Movement.** The stretch-break screen suggests three quick movements. Hyperactive kids
   often come back more settled after actually doing them.
+- **Focus challenges.** Five optional stars are short attention games (Gem Rush: grab blue, skip
+  red; Freeze!: stand still for 2 seconds; Two Things: jump only on green; Spot It: find the
+  marked crates; Echo Chimes: repeat the tune). They adapt to your child and can always be
+  skipped. The sun next to the quest card is the **Focus Meter**: it fills while your child
+  works toward the goal and triggers a "Focus Burst" bonus when full. Details in
+  [docs/FOCUS-TRAINING.md](docs/FOCUS-TRAINING.md). The random Freeze! game can be turned off
+  in Settings → Parents.
 - **Save & stop** is in the pause menu. It always saves. Closing the tab also keeps progress.
 
 ### Controls
@@ -101,6 +109,7 @@ no game-over), and has a built-in break timer.
 | Jump (tap again on landing for higher jumps) | Tap the right side | Space | A |
 | Long jump (while running) | Swipe sideways | Shift + Space | B |
 | Ground pound (in the air) | Swipe down | E | X |
+| Crouch (crouch + jump = backflip) | Swipe down and hold | hold C or Ctrl | hold X |
 | Camera | Slow drag on the right side | Q / E, or drag mouse | Right stick |
 | Focus mode | Eye icon | F | Back / View |
 | Pause / Settings | ❚❚ icon or two-finger tap | Esc | Start |

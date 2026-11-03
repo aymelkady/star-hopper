@@ -15,6 +15,8 @@
  *   player:poundstart {x,y,z}                     spin at the start of a ground pound
  *   player:wallkick   {x,y,z}
  *   player:bounce     {x,y,z, apex}               mushroom / enemy stomp bounce
+ *   player:crouch     {on}                        crouch held (touch swipe-down on ground, Ctrl/C/X)
+ *   player:backflip   {x,y,z}                     crouch + jump while standing still (player:jump also carries backflip:true)
  *   player:hurt       {bonks, max, x,y,z}
  *   player:respawn    {reason:'fall'|'water'|'bonk'|'manual', checkpoint}
  *   pickup:coin       {id, value, total, zone, zoneCoins}

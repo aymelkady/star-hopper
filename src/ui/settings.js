@@ -24,6 +24,7 @@ const ROWS = isTouch => [
   ...(isTouch ? [SEG('haptics', '📳', 'Buzz', [[true, 'On'], [false, 'Off']])] : []),
   { type: 'head', label: '👪 Parents' },
   SEG('breakMinutes', '⏱', 'Session length', [[10, '10'], [15, '15'], [20, '20'], [30, '30'], [0, 'Off']]),
+  SEG('freezeEnabled', '❄️', 'Freeze! game', [[true, 'On'], [false, 'Off']]),
 ];
 
 const same = (a, b) => (typeof a === 'number' || typeof b === 'number') ? Math.abs(Number(a) - Number(b)) < 1e-6 : a === b;
