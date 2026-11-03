@@ -84,7 +84,7 @@ async function desktopPass(browser) {
   ok(await logHas(page, 'ui:celebrate', tStar), 'ui:celebrate emitted for the star');
   const celeText = await page.evaluate(() => window.__game.plugins.objectives.lastCelebration);
   const celeDom = await page.textContent('#quest-card .qc-cele-big').catch(() => '');
-  ok(/Star 1 \/ 15/.test(celeText) && celeDom === celeText, `celebration card shown ("${celeText}")`);
+  ok(/Star 1 \/ 20/.test(celeText) && celeDom === celeText, `celebration card shown ("${celeText}")`);
   await page.waitForTimeout(400);
   await page.screenshot({ path: join(root, 'test/shots/celebrate.png') });
   await page.evaluate(() => window.__game.plugins.objectives.debugHoldTimers(false));

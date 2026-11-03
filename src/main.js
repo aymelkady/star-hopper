@@ -63,6 +63,7 @@ const menus = createMenus({
   onResume: () => resume(),
   onSaveStop: () => saveAndStop(),
 });
+if (touch.attach) touch.attach({ player: ctrl, state });
 const plugins = initPlugins({
   THREE, scene, camera, renderer, webgl, events, state, world, ctrl, pip, rig, hud, menus, game, input, touch,
   isTouch: IS_TOUCH,
