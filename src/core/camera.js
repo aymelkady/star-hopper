@@ -11,7 +11,9 @@
  *  - the camera stays >= CAM.groundClear above the ground under it;
  *  - "faders" (Pip, the bell, ...) registered with registerCamFader() fade out when the camera is
  *    too close to them (or, with occlude:true, when they hide Pip);
- *  - under a large prop (fader with large:true) the camera pulls back and up a little.
+ *  - under a large prop (fader with large:true) the camera pulls back and up a little;
+ *  - any other small opaque mesh that hides Pip (lantern post, gazebo roof, sign...) is swapped to
+ *    a see-through clone of its material while it is in the way, then restored.
  */
 import * as THREE from '../three.js';
 
@@ -45,6 +47,9 @@ export const CAM = {
   underPropMinPitch: 34 * DEG, // pitch floor while under it
   underPropRate: 4,
   fadeRate: 12,              // 1/s opacity smoothing
+  occMin: 0.3,               // opacity of a mesh that hides Pip
+  occMaxRadius: 8,           // only meshes smaller than this (bounding sphere) are faded
+  occRefresh: 1.5,           // s between scene scans for occluder candidates
 };
 
 // ---------- faders ----------
@@ -72,6 +77,74 @@ function applyOpacity(f, a) {
   }
 }
 
+// ---------- generic occluders (meshes that hide Pip) ----------
+function createOccluders() {
+  const ray = new THREE.Raycaster(), hits = [], sph = new THREE.Sphere(), dir = new THREE.Vector3();
+  const faded = new Map(); // mesh -> {orig, clone, opacity}
+  let list = [], refreshT = 0, scene = null;
+  const owned = new Set();
+  function findScene() {
+    const f = faders.find(x => x.name === 'pip') || faders[0];
+    let o = f && f.object; while (o && o.parent) o = o.parent;
+    return o && o.isScene ? o : null;
+  }
+  function refresh() {
+    scene = findScene(); list = [];
+    if (!scene) return;
+    owned.clear();
+    for (const f of faders) f.object.traverse(o => owned.add(o));
+    scene.traverse(o => {
+      if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || owned.has(o) || Array.isArray(o.material)) return;
+      const m = faded.has(o) ? faded.get(o).orig : o.material;
+      if (!m || m.transparent || m.opacity < 1 || !m.depthWrite || o.renderOrder > 0) return;
+      const g = o.geometry; if (!g || !g.attributes || !g.attributes.position) return;
+      if (!g.boundingSphere) g.computeBoundingSphere();
+      if (g.boundingSphere.radius * Math.max(o.scale.x, o.scale.y, o.scale.z) > CAM.occMaxRadius) return;
+      list.push(o);
+    });
+  }
+  const visibleChain = o => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+  return {
+    get count() { return faded.size; },
+    faded,
+    update(dt, cam, targets, enabled) {
+      refreshT -= dt;
+      if (refreshT <= 0) { refreshT = CAM.occRefresh; refresh(); }
+      const hitNow = new Set();
+      if (enabled) {
+        for (const tgt of targets) {
+          dir.subVectors(tgt, cam); const L = dir.length(); if (L < 0.5) continue; dir.divideScalar(L);
+          for (const o of list) {
+            const g = o.geometry; if (!g.boundingSphere) continue;
+            sph.copy(g.boundingSphere).applyMatrix4(o.matrixWorld);
+            // sphere vs. segment cam -> target (stop 0.35 m short of Pip)
+            const t = Math.max(0, Math.min(L - 0.35, _v.subVectors(sph.center, cam).dot(dir)));
+            _hit.copy(cam).addScaledVector(dir, t);
+            if (_hit.distanceToSquared(sph.center) > sph.radius * sph.radius || hitNow.has(o) || !visibleChain(o)) continue;
+            ray.set(cam, dir); ray.far = L - 0.35; hits.length = 0;
+            const m = o.material; if (faded.has(o)) o.material = faded.get(o).orig; // raycast honours side
+            o.raycast(ray, hits);
+            o.material = m;
+            if (hits.length) hitNow.add(o);
+          }
+        }
+      }
+      for (const o of hitNow) if (!faded.has(o)) {
+        const orig = o.material, clone = orig.clone();
+        clone.transparent = true; clone.name = orig.name; clone.userData = { ...orig.userData, camFadeClone: true };
+        faded.set(o, { orig, clone, opacity: 1 }); o.material = clone;
+      }
+      const k = 1 - Math.exp(-CAM.fadeRate * dt);
+      for (const [o, r] of faded) {
+        const target = hitNow.has(o) ? CAM.occMin : 1;
+        r.opacity += (target - r.opacity) * k;
+        if (target === 1 && r.opacity > 0.995) { o.material = r.orig; r.clone.dispose(); faded.delete(o); continue; }
+        r.clone.opacity = r.orig.opacity * r.opacity;
+      }
+    },
+  };
+}
+
 export function createCameraRig(camera, col, getSettings) {
   const focus = new THREE.Vector3();
   const look = new THREE.Vector3();
@@ -82,6 +155,9 @@ export function createCameraRig(camera, col, getSettings) {
     lift: 0, under: 0, lastBlocked: 1e9, groundClamped: false, actualPitch: CAM.pitch,
     faders, camera,
   };
+  const occluders = createOccluders();
+  rig.occluders = occluders;
+  const occTargets = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   let groundY = 0;
   const expK = (rate, dt) => 1 - Math.exp(-rate * dt);
   const clampPitch = p => Math.max(CAM.minPitch, Math.min(CAM.maxPitch, p));
@@ -201,6 +277,7 @@ export function createCameraRig(camera, col, getSettings) {
   // Called once per rendered frame.
   rig.update = (dt, ctrl, renderPos, camIn, mouse) => {
     const s = getSettings();
+    rig.mode = 'follow';
     const inv = s.invertY ? -1 : 1, spd = s.cameraSpeed || 1;
     pipPos.copy(renderPos);
     let manual = false;
@@ -252,6 +329,10 @@ export function createCameraRig(camera, col, getSettings) {
       if (rig.idle > CAM.autoDelay + 1) rig.pitch += (CAM.pitch - rig.pitch) * expK(CAM.pitchReturn, dt);
     }
     place(dt);
+    occTargets[0].set(renderPos.x, renderPos.y + 0.72, renderPos.z);  // body
+    occTargets[1].set(renderPos.x, renderPos.y + 0.2, renderPos.z);   // feet
+    occTargets[2].set(renderPos.x, renderPos.y + 1.3, renderPos.z);   // ears
+    occluders.update(dt, camera.position, occTargets, true);
   };
 
   // Title-screen slow orbit around a point
@@ -259,7 +340,9 @@ export function createCameraRig(camera, col, getSettings) {
     rig.yaw += dt * 0.08;
     camera.position.set(cx + Math.sin(rig.yaw) * radius, cy + height, cz + Math.cos(rig.yaw) * radius);
     camera.lookAt(cx, cy + 4, cz);
+    rig.mode = 'orbit';
     updateFaders(dt);
+    occluders.update(dt, camera.position, occTargets, false);
   };
   return rig;
 }

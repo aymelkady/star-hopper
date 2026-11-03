@@ -78,7 +78,8 @@ async function desktopPass(browser) {
   await page.evaluate(() => window.__game.setTimeScale(20));
   await page.waitForFunction(`${FP}.draining && ${FP}.meter() < 59`, null, { timeout: 8000 }).catch(() => {});
   const md = await fp(page, 'meter()');
-  ok(md < 59 && await fp(page, 'draining'), `meter drains after 25 s with no progress (${md.toFixed(1)})`);
+  const dbg = await page.evaluate(() => `mode=${window.__game.game.mode} screen=${document.querySelector('#overlay')?.textContent.slice(0, 40)} v=${JSON.stringify(window.__game.player.velocity)}`);
+  ok(md < 59 && await fp(page, 'draining'), `meter drains after 25 s with no progress (${md.toFixed(1)}) ${md < 59 ? '' : dbg}`);
   ok(await page.evaluate(() => document.getElementById('focus-meter').classList.contains('dim') && !/red/.test(document.getElementById('focus-meter').className)), 'draining sun dims (no red, no message)');
   await page.evaluate(() => window.__game.setTimeScale(1));
   ok((await since(page, 'focus:meter', 0)).length > 0, 'focus:meter events emitted');
