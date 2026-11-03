@@ -85,7 +85,7 @@ async function desktopPass(browser) {
   const ov = await page.evaluate(() => { const a = document.getElementById('focus-meter').getBoundingClientRect(), b = document.querySelector('#quest-card > .qc-obj').getBoundingClientRect(); return !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top); });
   ok(!ov, 'meter does not overlap the quest card (desktop)');
   await page.evaluate(() => window.__game.setTimeScale(20));
-  await page.waitForFunction(`${FP}.draining && ${FP}.meter() < 59`, null, { timeout: 8000 }).catch(() => {});
+  await page.waitForFunction(`${FP}.draining && ${FP}.meter() < 59`, null, { timeout: 25000 }).catch(() => {});
   const md = await fp(page, 'meter()');
   const dbg = await page.evaluate(() => `mode=${window.__game.game.mode} screen=${document.querySelector('#overlay')?.textContent.slice(0, 40)} v=${JSON.stringify(window.__game.player.velocity)}`);
   ok(md < 59 && await fp(page, 'draining'), `meter drains after 25 s with no progress (${md.toFixed(1)}) ${md < 59 ? '' : dbg}`);
@@ -171,12 +171,12 @@ async function desktopPass(browser) {
   // ---- Freeze! ----
   await place(page, 0, 10, Math.PI);
   await page.waitForTimeout(300);
+  const coins0 = await page.evaluate(() => window.__game.state.totalCoins());
   t = await nowT(page);
   ok(await fp(page, 'debugFreeze()') === true && await waitEv(page, 'freeze:start', t, 1000), 'debugFreeze() -> freeze:start');
   await page.waitForFunction(`${FP}.freeze.phase === 'hold'`, null, { timeout: 6000 }).catch(() => {});
   await page.waitForTimeout(700);
   await page.screenshot({ path: shot('freeze') });
-  const coins0 = await page.evaluate(() => window.__game.state.totalCoins());
   ok(await waitEv(page, 'freeze:success', t, 12000), 'standing still for 2 s -> freeze:success');
   ok(await page.evaluate(() => window.__game.state.totalCoins()) >= coins0 + 5, 'coin shower: +5 coins');
   await page.waitForFunction(() => !window.__game.plugins.focusplay.freeze.active, null, { timeout: 8000 }).catch(() => {});

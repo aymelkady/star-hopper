@@ -198,15 +198,18 @@ export function createCameraRig(camera, col, getSettings) {
   }
 
   // Is Pip standing under (or right beside) a large registered prop?
+  // (large faders also fade while Pip is under them: f.underPip)
   function underLargeProp() {
+    let any = false;
     for (const f of faders) {
       if (!f.large) continue;
       _box.setFromObject(f.object);
       const m = CAM.underPropMargin;
-      if (pipPos.x > _box.min.x - m && pipPos.x < _box.max.x + m && pipPos.z > _box.min.z - m && pipPos.z < _box.max.z + m &&
-        _box.max.y > pipPos.y + 1.2 && _box.min.y < pipPos.y + 7) return true;
+      f.underPip = pipPos.x > _box.min.x - m && pipPos.x < _box.max.x + m && pipPos.z > _box.min.z - m && pipPos.z < _box.max.z + m &&
+        _box.max.y > pipPos.y + 1.2 && _box.min.y < pipPos.y + 7;
+      any = any || f.underPip;
     }
-    return false;
+    return any;
   }
 
   function place(dt, instant = false) {
@@ -278,6 +281,7 @@ export function createCameraRig(camera, col, getSettings) {
       if (f.mode === 'point' && f.point) d = cam.distanceTo(f.point(_v));
       else { _box.setFromObject(f.object); d = _box.distanceToPoint(cam); }
       let t = f.start <= f.end ? (d <= f.end ? 0 : 1) : Math.max(0, Math.min(1, (d - f.end) / (f.start - f.end)));
+      if (f.large && f.underPip) t = 0;
       if (f.occlude && t > 0) {
         if (f.mode !== 'box') _box.setFromObject(f.object);
         _v.set(focus.x, focus.y - 0.3, focus.z).sub(cam);

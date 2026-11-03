@@ -200,15 +200,18 @@ ok(pDown <= 60.01 && pDown >= -35.01 && pUp <= 60.01 && pUp >= -35.01 && Math.ma
 await goTo(-38, 1, 4, -Math.PI / 2);
 await waitGame(0.3);
 await drag(0, 10);
-const yawA = await page.evaluate(() => window.__game.camera.yaw);
 await page.keyboard.down('KeyD');
-await waitGame(0.65);
-const yawB = await page.evaluate(() => window.__game.camera.yaw);
-await waitGame(1.8);
-const yawC = await page.evaluate(() => window.__game.camera.yaw);
+// per-frame (idle, yaw) samples until 2.5 s without camera input
+const samples = await page.evaluate(() => new Promise(res => {
+  const r = window.__game.camera, out = [];
+  const tick = () => { out.push([r.idle, r.yaw]); if (r.idle < 2.5 && out.length < 2000) requestAnimationFrame(tick); else res(out); };
+  requestAnimationFrame(tick);
+}));
 await page.keyboard.up('KeyD');
-ok(Math.abs(yawB - yawA) < 0.05, `no auto-rotate during the first second after camera input (Δyaw ${(yawB - yawA).toFixed(3)})`);
-ok(Math.abs(yawC - yawB) > 0.3, `auto-rotate swings behind the run after 1 s idle (Δyaw ${(yawC - yawB).toFixed(2)})`);
+const early = samples.filter(([i]) => i < CAM.autoDelay - 0.02), late = samples.at(-1);
+const drift = early.length ? Math.max(...early.map(([, y]) => Math.abs(y - early[0][1]))) : 0;
+ok(early.length > 0 && drift < 0.02, `no auto-rotate during the first ${CAM.autoDelay} s after camera input (max Δyaw ${drift.toFixed(3)} over ${early.length} frames)`);
+ok(Math.abs(late[1] - early.at(-1)[1]) > 0.3, `auto-rotate swings behind the run after ${CAM.autoDelay} s idle (Δyaw ${(late[1] - early.at(-1)[1]).toFixed(2)})`);
 
 ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
 await browser.close();
