@@ -80,7 +80,7 @@ export function createCameraRig(camera, col, getSettings) {
     yaw: 0, pitch: CAM.pitch, dist: CAM.dist, curDist: CAM.dist,
     idle: 9, focus, mode: 'follow', // 'follow' | 'orbit' (title screen)
     lift: 0, under: 0, lastBlocked: 1e9, groundClamped: false, actualPitch: CAM.pitch,
-    faders,
+    faders, camera,
   };
   let groundY = 0;
   const expK = (rate, dt) => 1 - Math.exp(-rate * dt);
