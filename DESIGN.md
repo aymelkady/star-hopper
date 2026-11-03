@@ -163,3 +163,13 @@ On touch devices (and any viewport ≤ 900 px wide or ≤ 500 px tall):
 - **Challenge chip:** replaces the quest card content while a challenge runs (no second card).
 - **Total HUD footprint on an 844×390 phone:** ≤ 12 % of the screen area, nothing in the central 60 % of the width below the top 60 px, nothing in the bottom 45 % except the small break ring. A test asserts these boxes.
 - Desktop keeps the full HUD.
+
+### 5.5 "Simple" movement mode, Roblox-style (user feedback: "why doesn't the character move like Roblox, it is easier")
+Default for new saves; the previous scheme stays as "Pro" (Settings → Controls).
+- **Movement:** camera-relative, full speed (8.5 m/s) within 0.05 s, full stop within 0.05 s, instant facing, step-up over ≤ 0.45 m, no skid.
+- **Jump:** tap = fixed 5.0 m jump (hold does nothing); tap again in the air = air double jump to 8.5 m total, replacing the timed triple jump so every star stays reachable. Coyote time and jump buffer stay. Pound and long jump remain as bonuses, never required.
+- **Auto-jump (touch, default on):** walking into a ledge 0.45–1.6 m high for ≥ 0.12 s jumps automatically; never toward a drop.
+- **Camera:** follow-behind, calmer auto-rotate, 7 m back / 2.8 m up / 18° pitch.
+- **Touch layout:** visible dynamic joystick on the left (110 px ring) and a round Jump button bottom-right (88 px, semi-transparent), the way Roblox does it; swipes still work (down = pound, sideways = long jump, slow drag = camera, two-finger tap = pause). Pro mode keeps the gesture-only layout.
+- **Tutorial:** three cards in Simple mode (move, jump, double jump).
+- Rationale: Roblox's ease comes from instant movement, one reliable jump, auto-jump and a button, not from the character model.
