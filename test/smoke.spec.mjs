@@ -165,6 +165,17 @@ async function uiChecks(page) {
   t = await nowT(page);
   await page.evaluate(() => window.__game.plugins.breaks.debugSetRemaining(1));
   await page.waitForSelector('#overlay .stretch', { timeout: 8000 }).catch(() => {});
+  // regression: a stray Enter (or a focused button + Enter) in the first second must not dismiss it
+  const shownAt = await page.evaluate(() => performance.now());
+  await page.keyboard.press('Enter');
+  const autoFocused = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  await page.focus('#btn-break-stop').catch(() => {});
+  await page.keyboard.press('Enter');
+  const guardMs = await page.evaluate(t => Math.round(performance.now() - t), shownAt);
+  await page.waitForTimeout(100);
+  ok(autoFocused !== 'btn-break-stop' && await page.isVisible('#overlay .stretch') && await mode() === 'paused',
+    `stretch card: nothing auto-focused + Enter in the first 1 s ignored (${guardMs} ms, still on the card)`);
+  await page.blur('#btn-break-stop').catch(() => {});
   ok(await page.isVisible('#overlay .stretch') && await mode() === 'paused', 'stretch break card visible and game paused');
   ok(await logHas(page, 'break:start', t) && await page.evaluate(t => window.__game.log.some(e => e.type === 'save:written' && e.t >= t && e.payload.reason === 'break'), t), 'break:start + auto-save before the break');
   ok(!(await page.isVisible('#btn-break-play')) && await page.isVisible('#btn-break-stop'), 'only "Save & stop" during the 60 s');
@@ -209,6 +220,101 @@ async function questFinale(page) {
   await page.click('#btn-keep-going');
   await page.waitForTimeout(200);
   ok(await mode() === 'playing' && await page.isVisible('#quest-card .qc-obj'), '"Keep going" resumes with a new objective');
+}
+
+// Regressions from the fresh-eyes audit (desktop): malformed save, respawn fade vs Save & stop,
+// "Great session!" leaking into another save, Skip on a Today's Quest star, ghost race vs Save & stop.
+async function regressionPass(browser) {
+  console.log('Regression pass (desktop)');
+  const { context, page, errors } = await openPage(browser, { viewport: { width: 1280, height: 720 } });
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const tapIntro = () => ev(() => { const el = document.querySelector('#quest-card .qc-intro'); if (el && !el.hidden) el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); });
+  const start = async slot => { await ev(s => window.__game.start(s), slot); await page.waitForFunction(() => window.__game.ready === true); await page.waitForTimeout(150); await tapIntro(); await page.waitForTimeout(100); };
+
+  // malformed save in slot 2 -> title still shows, slot 2 reads as empty, playable
+  await ev(() => { for (const s of [1, 2, 3]) window.__game.state.clearSlot(s); localStorage.setItem('starhopper.save.2', JSON.stringify({ version: 1 })); });
+  await page.reload();
+  await page.waitForFunction(() => window.__game && document.getElementById('btn-play'), null, { timeout: 20000 });
+  ok(await page.isVisible('#btn-play') && await page.isVisible('#title-slot-2'), 'malformed save: title screen still shows');
+  ok(await ev(() => document.getElementById('title-slot-2').classList.contains('empty') && window.__game.state.listSlots()[1].empty === true), 'malformed save: slot 2 shows as empty');
+  await page.click('#btn-play');
+  ok(/New game/.test(await page.textContent('#slot-2')), 'malformed save: slot picker offers "New game" for slot 2');
+  await page.click('#slot-2');
+  await page.waitForFunction(() => window.__game.ready === true, null, { timeout: 15000 });
+  ok(await ev(() => window.__game.state.data.stars.length === 0 && window.__game.game.mode === 'playing'), 'malformed save: slot 2 starts as a fresh game');
+  await ev(() => { window.__game.saveAndStop(); for (const s of [1, 2, 3]) window.__game.state.clearSlot(s); window.__game.state.setSetting('gestureTutorialSeen', true); });
+
+  // Save & stop during the respawn fade -> next session is not stuck behind a white screen
+  await start(1);
+  await ev(() => { const g = window.__game; g.respawn(); g.saveAndStop(); g.start(1); });
+  await page.waitForTimeout(150); await tapIntro();
+  await page.waitForTimeout(500);
+  const fade = await ev(() => ({ on: document.getElementById('fade').classList.contains('on'), frozen: window.__game.player.frozen, respawn: !!window.__game.game.respawn }));
+  ok(!fade.on && !fade.frozen && !fade.respawn, `respawn -> Save & stop -> start: no #fade.on, Pip not frozen (${JSON.stringify(fade)})`);
+  const p0 = await pos(page);
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(700); await page.keyboard.up('KeyW');
+  ok(dist(p0, await pos(page)) > 1, 'Pip can move after that');
+
+  // Skip on a Today's Quest star: swapped with the next non-quest star, not sent to the end
+  const sk = await ev(() => {
+    const ob = window.__game.plugins.objectives, q0 = ob.quest().stars, cur = ob.current(), next = ob.order().find(id => !q0.includes(id));
+    const okSkip = ob.skip();
+    const q1 = ob.quest().stars, order = ob.order();
+    return { okSkip, wasQuest: q0.includes(cur), pos: order.indexOf(cur), q1, joined: q1.includes(next), stillIn: q1.includes(cur), saved: JSON.stringify(window.__game.state.data.todayQuest.stars) === JSON.stringify(q1) };
+  });
+  ok(sk.okSkip && sk.wasQuest && sk.pos >= 0 && sk.pos <= 3, `skipped quest star stays within the first 4 of order() (position ${sk.pos})`);
+  ok(sk.q1.length === 3 && sk.joined && !sk.stillIn && sk.saved, `quest still has 3 stars (next non-quest star swapped in: ${sk.q1.join(',')})`);
+  await page.waitForTimeout(1300); // let the "New goal!" toast go
+
+  // ghost race running at Save & stop: the next session gets no "Try again?" toast
+  const race = await ev(async () => {
+    const g = window.__game, r = g.world.props.entities.find(e => e.type === 'race'), sp = r.startPad;
+    g.teleport(sp.x, sp.y + 0.3, sp.z);
+    const wait = (f, ms) => new Promise(res => { const t1 = performance.now(); const k = () => (f() || performance.now() - t1 > ms ? res(f()) : setTimeout(k, 50)); k(); });
+    const running = await wait(() => r.running, 3000);
+    const t0 = g.log.at(-1)?.t ?? 0;
+    g.saveAndStop(); g.start(1);
+    await new Promise(res => setTimeout(res, 300));
+    return { running, still: r.running, tryAgain: g.log.some(e => e.t >= t0 && e.type === 'ui:toast' && /Try again/.test(e.payload.text)), timer: !document.getElementById('hud-timer').hidden };
+  });
+  await tapIntro();
+  ok(race.running && !race.still && !race.tryAgain && !race.timer, `race cancelled by Save & stop / load: no "Try again?" toast, timer hidden (${JSON.stringify(race)})`);
+
+  // reveal toasts are short (<= 5 words)
+  const rv = await ev(() => {
+    const g = window.__game, t0 = g.log.at(-1)?.t ?? 0;
+    g.world.props.giftCoins(100, 'meadow');
+    return g.log.filter(e => e.t >= t0 && e.type === 'ui:toast').map(e => e.payload.text);
+  });
+  const longT = rv.filter(x => x.split(/\s+/).filter(w => /\w/.test(w)).length > 5);
+  ok(rv.some(x => /Bonus star/.test(x)) && longT.length === 0, `reveal toasts <= 5 words (${rv.join(' | ')})`);
+  await ev(() => { window.__game.saveAndStop(); for (const s of [1, 2, 3]) window.__game.state.clearSlot(s); });
+
+  // "Great session!" pending at Save & stop must not show in another save; it shows once back in its own
+  await start(2);
+  await ev(async () => {
+    const g = window.__game, q = g.plugins.objectives.quest();
+    for (const id of q.stars) { const s = g.world.findPickup(id); s.revealed = true; g.collect(id); }
+    g.pause();                                        // paused during the celebration
+    await new Promise(r => setTimeout(r, 3200));      // the 2.5 s celebration ends while paused
+    g.saveAndStop();
+  });
+  await start(3);                                     // a different, fresh save
+  await ev(() => { window.__game.pause(); window.__game.resume(); });
+  await page.waitForTimeout(400);
+  ok(await ev(() => window.__game.menus.screen !== 'great' && !document.getElementById('btn-keep-going') && window.__game.game.mode === 'playing'), 'no "Great session!" card in a different save after Save & stop');
+  await ev(() => window.__game.saveAndStop());
+  await start(2);
+  await page.waitForSelector('#btn-keep-going', { timeout: 4000 }).catch(() => {});
+  ok(await page.isVisible('#btn-keep-going'), 'back in the original save: "Great session!" shows');
+  await page.click('#btn-keep-going');
+  await ev(() => { window.__game.pause(); window.__game.resume(); });
+  await page.waitForTimeout(400);
+  ok(await ev(() => window.__game.menus.screen !== 'great' && window.__game.game.mode === 'playing' && window.__game.state.data.todayQuest.celebrated === true), '...and only once (celebrated saved when shown)');
+  await ev(() => { window.__game.saveAndStop(); for (const s of [1, 2, 3]) window.__game.state.clearSlot(s); });
+
+  ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
+  await context.close();
 }
 
 // phone / iPad: the quest card must not collide with HUD chips or touch controls
@@ -323,12 +429,48 @@ async function touchPass(browser, name, viewport) {
   ok(!await logHas(page, 'player:jump', t) && !await logHas(page, 'player:longjump', t), 'slow drag fires no jump');
   await page.screenshot({ path: join(root, `test/shots/${name}.png`) });
 
+  // Skip › on touch: first tap only arms it ("Skip? ✓"), a second tap within 2 s skips
+  const g0 = await page.evaluate(() => window.__game.plugins.objectives.current());
+  await page.tap('#btn-skip');
+  const armed = await page.evaluate(() => ({ cur: window.__game.plugins.objectives.current(), txt: document.getElementById('btn-skip').textContent }));
+  ok(armed.cur === g0 && armed.txt === 'Skip? ✓', `touch Skip: first tap arms it ("${armed.txt}", goal unchanged)`);
+  await page.tap('#btn-skip');
+  await wait(100);
+  ok(await page.evaluate(g => window.__game.plugins.objectives.current() !== g && document.getElementById('btn-skip').textContent === 'Skip ›', g0), 'touch Skip: second tap within 2 s skips');
+
+  // no pinch / double-tap zoom: gesturestart and a quick 2nd touchend off-controls are cancelled
+  const zoom = await page.evaluate(() => {
+    const c = document.getElementById('game');
+    const gs = new Event('gesturestart', { cancelable: true, bubbles: true }); c.dispatchEvent(gs);
+    const te = () => { const e = new TouchEvent('touchend', { cancelable: true, bubbles: true }); c.dispatchEvent(e); return e.defaultPrevented; };
+    const first = te(), second = te();
+    const b = document.getElementById('btn-pause'); const e1 = new TouchEvent('touchend', { cancelable: true, bubbles: true }); b.dispatchEvent(e1);
+    const e2 = new TouchEvent('touchend', { cancelable: true, bubbles: true }); b.dispatchEvent(e2);
+    return { gesture: gs.defaultPrevented, first, second, button: e2.defaultPrevented, css: getComputedStyle(document.body).touchAction };
+  });
+  ok(zoom.gesture && !zoom.first && zoom.second && !zoom.button && zoom.css === 'none', `zoom guards: gesturestart blocked, double-tap blocked off-controls, buttons untouched (${JSON.stringify(zoom)})`);
+
   // two-finger tap = pause
   t = await nowT(page);
   await down(4, R.x, R.y); await wait(30); await down(5, R.x + 90, R.y + 20);
   await wait(80); await up(4, 5);
   await page.waitForFunction(s => window.__game.log.some(e => e.type === 'game:pause' && e.t >= s), t, { timeout: 4000 }).catch(() => {});
   ok(await logHas(page, 'game:pause', t), 'two-finger tap -> game:pause');
+  if (name === 'ipad') {
+    // menu taps still work with the zoom guards: Settings button + a slider (tap near its right end)
+    await page.tap('#btn-settings');
+    ok(await page.isVisible('#overlay .settings'), 'iPad: tap opens Settings from the pause menu');
+    const sl = await page.locator('#overlay .settings input[type=range]').first();
+    const id = await sl.getAttribute('id'), v0 = Number(await sl.inputValue());
+    const bb = await sl.boundingBox();
+    const tx = v0 > 50 ? bb.x + 6 : bb.x + bb.width - 6;
+    await down(7, tx, bb.y + bb.height / 2); await wait(60); await up(7);
+    await wait(150);
+    const v1 = Number(await page.inputValue(`#${id}`));
+    ok(v1 !== v0, `iPad: tapping a Settings slider moves it (${id} ${v0} -> ${v1})`);
+    await page.tap('#btn-settings-back');
+    ok(await page.isVisible('#btn-resume'), 'iPad: tap on Back returns to the pause menu');
+  }
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
   await context.close();
 }
@@ -345,6 +487,7 @@ async function launch() {
 const browser = await launch();
 try {
   await desktopPass(browser);
+  await regressionPass(browser);
   await touchPass(browser, 'ipad', { width: 1080, height: 810 });
   await touchPass(browser, 'phone', { width: 844, height: 390 });
 } catch (err) {

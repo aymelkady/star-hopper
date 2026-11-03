@@ -139,7 +139,7 @@ export function createMenus({ state, onPlay, onResume, onSaveStop, isTouch }) {
   // gamepad navigation (keyboard uses native Tab/Enter)
   function nav(n) {
     if (!screen) return;
-    const btns = [...root.querySelectorAll('button, input')].filter(b => !b.disabled);
+    const btns = [...root.querySelectorAll('button, input')].filter(b => !b.disabled && b.getClientRects().length); // skip hidden ones
     if (!btns.length) return;
     let i = btns.indexOf(document.activeElement);
     if (n.down || n.right) i = (i + 1) % btns.length;

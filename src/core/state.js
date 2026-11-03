@@ -51,6 +51,27 @@ export function freshSave(slot, settings) {
   };
 }
 
+// A save is usable only if it has the shape the game reads unguarded; anything else (hand-edited,
+// truncated, an old format) is treated as an empty slot instead of breaking the title / boot.
+const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+export function validSave(d) {
+  return isObj(d) && d.version === 1 && Array.isArray(d.stars) && d.stars.every(x => typeof x === 'string');
+}
+function sanitize(d, slot, settings) {
+  const base = freshSave(slot, settings), out = { ...base, ...d, slot };
+  if (!isObj(out.redCoins)) out.redCoins = {};
+  for (const k of Object.keys(out.redCoins)) if (!Array.isArray(out.redCoins[k])) out.redCoins[k] = [];
+  if (!isObj(out.coins)) out.coins = { ...base.coins };
+  for (const k of Object.keys(base.coins)) if (!(Number(out.coins[k]) >= 0)) out.coins[k] = 0;
+  if (!Array.isArray(out.coinIds)) out.coinIds = [];
+  if (!isObj(out.settings)) out.settings = { ...settings };
+  if (!isObj(out.focus)) out.focus = base.focus;
+  if (!(Number(out.playTime) >= 0)) out.playTime = 0;
+  if (out.checkpoint && !(isObj(out.checkpoint) && [out.checkpoint.x, out.checkpoint.y, out.checkpoint.z].every(Number.isFinite))) out.checkpoint = null;
+  if (out.todayQuest && !(isObj(out.todayQuest) && Array.isArray(out.todayQuest.stars))) out.todayQuest = null;
+  return out;
+}
+
 export function createState(events) {
   const st = {
     slot: 0,
@@ -62,7 +83,7 @@ export function createState(events) {
       const out = [];
       for (let n = 1; n <= SLOT_COUNT; n++) {
         const d = readJSON(SAVE_KEY(n));
-        out.push(d ? { slot: n, empty: false, stars: d.stars.length, playTime: d.playTime || 0, updated: d.updated }
+        out.push(validSave(d) ? { slot: n, empty: false, stars: d.stars.length, playTime: Number(d.playTime) || 0, updated: Number(d.updated) || 0 }
           : { slot: n, empty: true, stars: 0, playTime: 0 });
       }
       return out;
@@ -70,8 +91,12 @@ export function createState(events) {
     load(slot) {
       const d = readJSON(SAVE_KEY(slot));
       st.slot = slot;
-      st.data = d && d.version === 1 ? { ...freshSave(slot, st.settings), ...d, slot } : freshSave(slot, st.settings);
+      st.data = validSave(d) ? sanitize(d, slot, st.settings) : freshSave(slot, st.settings);
       st._coinSet = new Set(st.data.coinIds);
+      return st.data;
+    },
+    reset(slot) { // last resort when a save loads but the world cannot apply it (main.js startGame)
+      st.slot = slot; st.data = freshSave(slot, st.settings); st._coinSet = new Set();
       return st.data;
     },
     clearSlot(slot) {

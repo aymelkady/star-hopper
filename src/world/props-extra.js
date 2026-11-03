@@ -211,11 +211,11 @@ export function ghostRace(P, { start, finish, path, target = 30, ghostTime = 26,
     const k = Math.min(1, d / segs[i]), x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, z = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k;
     return [x, z];
   };
-  ent.stop = (won) => {
+  ent.stop = (won, quiet = false) => {
     if (!ent.running) return;
     ent.running = false; ghost.visible = false;
-    P.events.emit('race:end', { won, time: +ent.time.toFixed(2) });
-    if (won) onWin(); else P.events.emit('ui:toast', { text: 'Try again?' });
+    P.events.emit('race:end', { won, time: +ent.time.toFixed(2), cancelled: quiet });
+    if (won) onWin(); else if (!quiet) P.events.emit('ui:toast', { text: 'Try again?' });
   };
   ent.update = (dt, ctrl) => {
     const p = ctrl.position;
@@ -237,7 +237,7 @@ export function ghostRace(P, { start, finish, path, target = 30, ghostTime = 26,
     if (on(fp)) ent.stop(true);
     else if (ent.time > target) ent.stop(false);
   };
-  ent.cancel = () => { if (ent.running) ent.stop(false); };
+  ent.cancel = (quiet = false) => { if (ent.running) ent.stop(false, quiet); }; // quiet: save load / Save & stop
   P.entities.push(ent);
   return ent;
 }

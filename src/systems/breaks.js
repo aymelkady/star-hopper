@@ -15,6 +15,7 @@ const PROMPTS = ['⭐ 10 star jumps', '🙆 Touch your toes 5 times', '🪟 Walk
   '🌬️ 5 big breaths', '🦩 Stand on one leg, count 10', '🔄 Roll your shoulders 5 times', '🐸 5 frog hops', '🙌 Reach up high 3 times'];
 const WARN = [{ s: 300, minutes: 5, text: '5 minutes left. Finish this star!' }, { s: 60, minutes: 1, text: '1 minute left!' }];
 const C = 2 * Math.PI * 26; // ring circumference (r = 26 in a 64 viewBox)
+const GUARD_MS = 1000;       // the card ignores Enter / Space / gamepad A this long (a held jump key must not dismiss it)
 
 const ringSvg = (cls, label) => `<svg class="${cls}" viewBox="0 0 64 64" aria-hidden="true">
   <circle class="rb" cx="32" cy="32" r="26"/><circle class="rf" cx="32" cy="32" r="26" stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="0" transform="rotate(-90 32 32)"/>
@@ -22,7 +23,10 @@ const ringSvg = (cls, label) => `<svg class="${cls}" viewBox="0 0 64 64" aria-hi
 
 export function init(ctx) {
   const { events, state, game, api, menus, isTouch, hud } = ctx;
-  let elapsed = 0, prevRem = Infinity, onBreak = false, stretch = 0, promptI = 0, prompts = [];
+  let elapsed = 0, prevRem = Infinity, onBreak = false, stretch = 0, promptI = 0, prompts = [], shownAt = 0;
+  const guarded = () => performance.now() - shownAt < GUARD_MS;
+  // keyboard / gamepad "clicks" (detail 0: Enter, Space, menus.nav confirm) are dropped during the guard
+  const guardClick = fn => e => { if (e && e.detail === 0 && guarded()) { e.preventDefault(); return; } fn(); };
 
   // ---- HUD ring ----
   const ring = document.createElement('div');
@@ -73,11 +77,15 @@ export function init(ctx) {
       </div>
       <div class="stretch-btns">
         <button id="btn-break-play" class="btn big" hidden>▶ Play again</button>
-        <button id="btn-break-stop" class="btn primary" data-autofocus>💾 Save &amp; stop</button>
+        <button id="btn-break-stop" class="btn primary">💾 Save &amp; stop</button>
       </div>
     </div>`, { dim: true, locked: true, screen: 'stretch', onBack: null });
-    document.getElementById('btn-break-play').addEventListener('click', () => endBreak('play'));
-    document.getElementById('btn-break-stop').addEventListener('click', () => endBreak('stop'));
+    shownAt = performance.now();
+    // nothing is auto-focused (menus.render would focus the first button: Play again is hidden, so
+    // focus stays off the buttons); a stray Enter / Space / A cannot press "Save & stop"
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    document.getElementById('btn-break-play').addEventListener('click', guardClick(() => endBreak('play')));
+    document.getElementById('btn-break-stop').addEventListener('click', guardClick(() => endBreak('stop')));
     drawStretch();
     events.emit('break:start', { minutes: total() / 60, prompts: [...prompts] });
   }

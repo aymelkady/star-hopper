@@ -30,12 +30,14 @@
  *   bell:ring         {}
  *   race:start        {target}                    ghost race started (seconds)
  *   race:tick         {remaining}                 once per second during a race
- *   race:end          {won, time}
+ *   race:end          {won, time, cancelled}      cancelled = quiet stop (save load / Save & stop)
  *   enemy:popped      {id, zone, x,y,z, count, total}
  *   zone:enter        {zone, name}               'hub'|'meadow'|'cove'|'towers'
  *   settings:changed  {key, value, settings}
  *   save:written      {slot, reason}
  *   input:focus       {}                          F / gamepad Back pressed (focus mode toggle)
+ *   input:confirm     {consumed:false}            gamepad A edge while playing; a listener that uses it
+ *                                                 (an open challenge card) sets consumed = true -> no jump
  *   ui:toast          {text}                      ask the HUD to show a short popup
  *   tick              {dt, t}                     once per rendered frame (dt in s, unscaled)
  *

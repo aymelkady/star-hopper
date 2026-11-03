@@ -5,7 +5,7 @@
  *   intro     : "Today's quest" with 3 rows (current one marked); tap to close
  * Only textContent / style changes per frame; DOM is built once.
  */
-export function createQuestCard({ onSkip, onIntroTap }) {
+export function createQuestCard({ onSkip, onIntroTap, confirmSkip = false }) {
   const root = document.getElementById('quest-card');
   root.innerHTML = `
     <div class="qc-obj">
@@ -23,7 +23,19 @@ export function createQuestCard({ onSkip, onIntroTap }) {
   const q = s => root.querySelector(s);
   const el = { obj: q('.qc-obj'), ico: q('.qc-ico'), text: q('.qc-text'), bar: q('.qc-bar'), fill: q('.qc-bar i'), dist: q('.qc-dist'),
     dots: q('.qc-dots'), skip: q('.qc-skip'), cele: q('.qc-cele'), celeBig: q('.qc-cele-big'), celeSub: q('.qc-cele-sub'), intro: q('.qc-intro'), rows: q('.qc-rows') };
-  el.skip.addEventListener('click', e => { e.stopPropagation(); el.skip.blur(); onSkip(); });
+  // touch (confirmSkip): a stray tap only arms it ("Skip? ✓"); a 2nd tap within 2 s skips
+  const SKIP_LABEL = 'Skip ›', SKIP_SURE = 'Skip? ✓', ARM_MS = 2000;
+  let armT = 0, armTimer = 0;
+  const disarm = () => { armT = 0; clearTimeout(armTimer); el.skip.textContent = SKIP_LABEL; el.skip.classList.remove('armed'); };
+  el.skip.addEventListener('click', e => {
+    e.stopPropagation(); el.skip.blur();
+    if (confirmSkip && !(armT && performance.now() - armT <= ARM_MS)) {
+      armT = performance.now(); el.skip.textContent = SKIP_SURE; el.skip.classList.add('armed');
+      clearTimeout(armTimer); armTimer = setTimeout(disarm, ARM_MS);
+      return;
+    }
+    disarm(); onSkip();
+  });
   el.skip.addEventListener('pointerdown', e => e.stopPropagation());
   el.intro.addEventListener('pointerdown', e => { e.stopPropagation(); onIntroTap(); });
   let mode = 'objective', last = {};

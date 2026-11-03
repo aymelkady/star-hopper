@@ -7,7 +7,7 @@
  */
 const RED_STAR = { meadow: 'meadow-2', cove: 'cove-3', towers: 'towers-3' };
 
-export function createHud({ events, state, world, totalStars = 20 } /* focus-play: 15 + 5 challenge stars */) {
+export function createHud({ events, state, world }) {
   const $ = id => document.getElementById(id);
   const el = { hud: $('hud'), stars: $('hud-stars'), coins: $('hud-coins'), red: $('hud-redcoins'), timer: $('hud-timer'), zone: $('hud-zone'), toast: $('toast') };
   const val = e => e.querySelector('.val');
@@ -17,7 +17,7 @@ export function createHud({ events, state, world, totalStars = 20 } /* focus-pla
   function refresh() {
     const d = state.data;
     if (!d) return;
-    val(el.stars).textContent = `${d.stars.length} / ${totalStars}`;
+    val(el.stars).textContent = `${d.stars.length} / ${world.stars.length}`; // 15 + 5 challenge stars, live
     const zc = d.coins[zone] || 0;
     val(el.coins).textContent = zone === 'hub' ? `${state.totalCoins()}` : `${zc} / 100`;
     const rs = RED_STAR[zone];

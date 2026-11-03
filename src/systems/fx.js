@@ -370,7 +370,7 @@ export function init(ctx) {
     if (p.id === lastRedId) return;
     const c = findPickup(p.id) || P();
     burst({ x: c.x, y: c.y, z: c.z, count: 8, color: [0xffe14a, 0xfff3a0, 0xffc020], speed: 4.5, life: 0.45, gravity: -6, size: 0.2, up: 1 });
-    floatLabel('+1', c.x, c.y, c.z, false);
+    floatLabel(`+${Math.max(1, Math.round(p.value) || 1)}`, c.x, c.y, c.z, false); // Freeze! gift +5, burst coins +2
     buzz(10);
   });
   on('pickup:redcoin', p => {

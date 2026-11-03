@@ -111,7 +111,7 @@ export function createProps({ scene, col, events, state }) {
       events.emit('pickup:coin', { id: c.id, value: v, total: state.totalCoins(), zone: c.zone, zoneCoins });
       if (zoneCoins >= 100 && c.zone !== 'hub') {
         const b = P.starById.get(`bonus-${c.zone}`);
-        if (b && !b.revealed) P.revealStar(b, `100 coins! Bonus star!`);
+        if (b && !b.revealed) P.revealStar(b, 'Bonus star appeared!');
       }
     } else {
       const count = state.addRedCoin(c.starId, c.index);
@@ -129,7 +129,7 @@ export function createProps({ scene, col, events, state }) {
     if (!state.data || !(n > 0)) return 0;
     const zc = (state.data.coins[zone] = (state.data.coins[zone] || 0) + n);
     events.emit('pickup:coin', { id: `gift-${zone}`, value: n, total: state.totalCoins(), zone, zoneCoins: zc, gift: true });
-    if (zc >= 100 && zone !== 'hub') { const b = P.starById.get(`bonus-${zone}`); if (b && !b.revealed) P.revealStar(b, '100 coins! Bonus star!'); }
+    if (zc >= 100 && zone !== 'hub') { const b = P.starById.get(`bonus-${zone}`); if (b && !b.revealed) P.revealStar(b, 'Bonus star appeared!'); }
     return zc;
   };
 
@@ -153,7 +153,7 @@ export function createProps({ scene, col, events, state }) {
     if (s.revealed) return;
     s.revealed = true; s.revealT = 0.8; s.mesh.visible = true;
     events.emit('star:revealed', { id: s.id, zone: s.zone, name: s.name, x: s.x, y: s.y, z: s.z });
-    toast(`${why ? why + ' ' : ''}A star appeared!`);
+    toast(`⭐ ${why || 'A star appeared!'}`); // ≤ 5 words (each `why` is a short cheer)
   };
   P.collectStar = s => {
     if (!s || s.collected) return false;

@@ -143,11 +143,15 @@ async function desktopPass(browser) {
   await nearPad(page, 'gem', 'cove');
   t = await nowT(page);
   await fp(page, "debugStart('gem', 'cove')");
+  await page.waitForTimeout(150);
+  const r1 = await page.evaluate(() => ({ flag: window.__game.plugins.objectives.challenging, vis: getComputedStyle(document.querySelector('#quest-card > .qc-obj')).visibility, beacon: window.__game.plugins.objectives.beacon.column.visible, chip: !document.getElementById('fp-chip').hidden }));
+  ok(r1.flag && r1.vis === 'hidden' && !r1.beacon && r1.chip, `R1: while a challenge runs only its chip shows (quest card ${r1.vis}, beacon ${r1.beacon}, chip ${r1.chip})`);
   for (let i = 0; i < 20; i++) await fp(page, i % 2 ? 'debugMiss()' : 'debugHit()');
   ok(await waitEv(page, 'challenge:end', t, 4000, "p.type === 'gem' && p.won === false && p.hits === 10"), '50 % run -> challenge:end {won:false, 10 / 20}');
   ok((await since(page, 'challenge:miss', t)).length === 10, 'challenge:miss for every wrong answer');
   await page.waitForTimeout(200);
   ok(await page.isVisible('#fp-retry') && await page.isVisible('#fp-easier'), '"Try again" + "Easier" offered (no loss)');
+  ok(await page.evaluate(() => !window.__game.plugins.objectives.challenging && getComputedStyle(document.querySelector('#quest-card > .qc-obj')).visibility === 'visible'), 'R1: main goal comes back on the quest card after the challenge');
   await page.screenshot({ path: shot('retry') });
   await fp(page, 'debugClose()');
 
@@ -195,6 +199,53 @@ async function desktopPass(browser) {
   ok(await fp(page, 'debugFreeze()') === false && !(await waitEv(page, 'freeze:start', t, 600)), 'freezeEnabled=false -> debugFreeze() does nothing');
   await page.evaluate(() => window.__game.state.setSetting('freezeEnabled', true));
 
+  // ---- regression: Freeze! never starts next to a live Grumble ----
+  const grum = await page.evaluate(() => { const e = window.__game.world.props.entities.find(e => e.type === 'grumble' && e.alive); return e && { x: e.x, z: e.z }; });
+  await place(page, grum.x + 3, grum.z, 0);
+  await page.waitForTimeout(150);
+  t = await nowT(page);
+  ok(await fp(page, 'debugFreeze()') === false && !(await waitEv(page, 'freeze:start', t, 600)), 'Freeze! refused with a Grumble within 8 m (no freeze:start)');
+  await place(page, 0, 10, 0);
+  await page.waitForTimeout(200);
+
+  // ---- regression: a challenge cancelled by walking away can start again ----
+  const cancelRe = await page.evaluate(async () => {
+    const g = window.__game, F = g.plugins.focusplay, ch = F.course('gem', 'towers'), t0 = g.log.at(-1)?.t ?? 0;
+    const onPad = () => { const p = ch.pad; g.player.teleport(p.x, g.world.col.groundHeight(p.x, p.z, p.y + 2) + 0.1, p.z, 0); g.player.velocity.set(0, 0, 0); g.camera.snap(g.player.position, 0); };
+    onPad(); F.debugStart('gem', 'towers');
+    const running = F.active() && F.active().phase === 'run' && !ch.padMesh.visible;
+    g.teleport(0, g.world.col.groundHeight(0, 14, 30) + 0.1, 14); // ~70 m away, in the hub
+    const wait = (f, ms) => new Promise(r => { const t1 = performance.now(); const k = () => (f() || performance.now() - t1 > ms ? r(f()) : setTimeout(k, 50)); k(); });
+    const ended = await wait(() => g.log.some(e => e.type === 'challenge:end' && e.t >= t0 && e.payload.cancelled === true), 3000);
+    const padBack = ch.padMesh.visible && F.challenges().find(c => c.starId === ch.starId).earned === false;
+    onPad();
+    const card = await wait(() => !!document.querySelector('#fp-card.fp-rule:not([hidden])'), 3000);
+    g.teleport(0, g.world.col.groundHeight(0, 14, 30) + 0.1, 14); F.debugClose();
+    return { running, ended, padBack, card };
+  });
+  ok(cancelRe.running && cancelRe.ended, 'walking 40+ m away cancels a running Gem Rush (challenge:end {cancelled:true})');
+  ok(cancelRe.padBack, 'cancelled challenge: start pad visible again');
+  ok(cancelRe.card, 'cancelled challenge: stepping back on the pad opens the rule card again');
+  await page.waitForTimeout(200);
+
+  // ---- regression: gamepad A presses the card's primary button and does not jump ----
+  await nearPad(page, 'two', 'cove');
+  await page.waitForFunction(() => window.__game.player.grounded, null, { timeout: 3000 }).catch(() => {});
+  await fp(page, "debugStart('two', 'cove', { card: true })");
+  t = await nowT(page);
+  ok(await fp(page, 'debugConfirm()') === true, 'debugConfirm() queues a simulated gamepad A press');
+  await page.waitForFunction(() => window.__game.plugins.focusplay.active()?.phase === 'count', null, { timeout: 3000 }).catch(() => {});
+  ok(await page.evaluate(() => document.getElementById('fp-card').hidden && window.__game.plugins.focusplay.active()?.phase === 'count'), 'gamepad A on the rule card -> ▶ Start (card closes, 3-2-1)');
+  ok((await since(page, 'player:jump', t)).length === 0, 'that A press is consumed: no player:jump');
+  await fp(page, 'debugClose()');
+  await place(page, 0, 10, 0);
+  await page.waitForFunction(() => window.__game.player.grounded, null, { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(150);
+  t = await nowT(page);
+  await fp(page, 'debugConfirm()');
+  ok(await waitEv(page, 'player:jump', t, 2000), 'gamepad A with no card open still jumps');
+  await page.waitForTimeout(800);
+
   // ---- text rules on every card ----
   const textBad = await page.evaluate(() => {
     const bad = [];
@@ -216,6 +267,19 @@ async function desktopPass(browser) {
   ok(fsave && fsave.levels && fsave.results['focus-gem-meadow']?.won === true && fsave.bursts >= 1 && Array.isArray(fsave.history.freeze), `save keeps the focus block (levels ${JSON.stringify(fsave && fsave.levels)})`);
   ok(await page.evaluate(() => window.__game.state.hasStar('focus-gem-meadow')) && await fp(page, "level('gem')") === fsave.levels.gem, 'challenge star + adaptivity level persisted after reload');
   ok(await page.evaluate(() => { const s = window.__game.world.findPickup('focus-two-cove'); return s.revealed && !s.collected; }), 'earned-but-not-collected star still waiting after reload');
+  // ---- regression: the quest card label of a won challenge star is right straight after game:start ----
+  const lbl = await page.evaluate(() => {
+    const g = window.__game, d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const stars = g.world.STAR_ORDER.filter(id => id !== 'focus-two-cove');
+    g.saveAndStop();
+    localStorage.setItem('starhopper.save.3', JSON.stringify({ version: 1, slot: 3, stars, todayQuest: { date: today, stars: stars.slice(0, 3), celebrated: true },
+      focus: { levels: {}, history: {}, bursts: 0, results: { 'focus-two-cove': { won: true, fails: 0, attempts: 1, best: 10 } } } }));
+    g.start(3);
+    const r = { cur: g.plugins.objectives.current(), text: document.querySelector('#quest-card .qc-text').textContent };
+    g.saveAndStop(); g.state.clearSlot(3);
+    return r;
+  });
+  ok(lbl.cur === 'focus-two-cove' && lbl.text === 'Grab the star!', `won challenge star reads "Grab the star!" right after start (${lbl.cur}: "${lbl.text}")`);
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
   await context.close();
 }

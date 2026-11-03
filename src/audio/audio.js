@@ -170,7 +170,7 @@ export function init(ctx) {
   // C-major pentatonic ladder (C5 up) for coin streaks; C-major scale for red coins / chimes
   const COIN_LADDER = [72, 74, 76, 79, 81, 84, 86, 88, 91].map(mtof);
   const SCALE8 = [72, 74, 76, 77, 79, 81, 83, 84].map(mtof);
-  let coinStreak = 0, lastCoinT = -9, lastStarT = -9;
+  let coinStreak = 0, lastCoinT = -9;
 
   const SFX = {
     jump(o = {}) {
@@ -312,7 +312,7 @@ export function init(ctx) {
   on('player:bounce', () => play('bounce'));
   on('pickup:redcoin', p => { lastRedId = p.id; play('redcoin', p); });
   on('pickup:coin', p => { if (p.id !== lastRedId) play('coin'); });
-  on('pickup:star', () => { lastStarT = performance.now(); play('star'); });
+  on('pickup:star', () => play('star'));
   on('checkpoint:reached', () => play('checkpoint'));
   on('switch:pressed', () => play('switch'));
   on('lantern:lit', () => play('lantern'));
@@ -324,10 +324,9 @@ export function init(ctx) {
   on('race:tick', p => { if (p.remaining <= 5 && p.remaining > 0) play('race'); });
   on('ui:warn', () => play('warn'));
   on('ui:toast', () => play('toast'));
-  on('ui:celebrate', p => {
+  on('ui:celebrate', p => { // kind 'star' never plays here: pickup:star already played the jingle
     if (p.kind === 'quest') play('quest');
     else if (p.kind === 'coin100') play('coin100');
-    else if (p.kind === 'star' && performance.now() - lastStarT > 1500) play('star');
   });
   on('break:start', () => { duck.brk = true; applyVolumes(false); play('breakstart'); });
   on('break:end', () => { duck.brk = false; applyVolumes(false); play('breakend'); });

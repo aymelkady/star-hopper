@@ -165,6 +165,7 @@ export function createInput(target = window, canvas = null, touch = null) {
       prevPad.sUp = sUp; prevPad.sDown = sDown;
     } else prevPad = {};
 
+    if (latch.padA) { jumpPressed = true; nav.confirm = true; actions.device = 'gamepad'; } // debugPadA(): one simulated A edge
     let crouchHeld = false;
     if (touch) {
       // gesture layer (touch.js): edges are latched there until this step consumes them
@@ -209,6 +210,7 @@ export function createInput(target = window, canvas = null, touch = null) {
     setContext(c) { ctx = c; },
     setEnabled(v) { enabled = v; if (!v) { for (const key in latch) if (key !== 'pause') latch[key] = false; } },
     setPointerLock(v) { pointerLock = !!v; },
+    debugPadA() { latch.padA = true; return true; }, // tests: one gamepad A press (jump + nav.confirm edge)
     get scheme() { return scheme; },
     keys,
   };

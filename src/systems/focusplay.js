@@ -14,7 +14,7 @@
  * Events: challenge:start/hit/miss/end, freeze:start/success/fail, focus:burst, focus:meter.
  * API (window.__game.plugins.focusplay): meter(), level(type), challenges(), active(),
  *   settingsRows(), debugSetMeter(v), debugStart(type, zone, {card}), debugHit(), debugMiss(),
- *   debugFreeze(), debugTapCard(), freeze (scheduler)
+ *   debugFreeze(), debugTapCard(), debugConfirm() (simulated gamepad A), freeze (scheduler)
  */
 import { createFocusUI } from '../ui/focus-meter.js';
 import { createGem } from './challenges/gem.js';
@@ -52,7 +52,7 @@ function glowTexture(THREE) {
 }
 
 export function init(ctx) {
-  const { THREE, scene, camera, events, state, world, ctrl, game, hud } = ctx;
+  const { THREE, scene, camera, events, state, world, ctrl, game, hud, input } = ctx;
   const P = world.props, col = world.col;
   const ui = createFocusUI();
   const G = () => window.__game || {};
@@ -184,7 +184,11 @@ export function init(ctx) {
     if (!cancelled) evaluate(ch.type);
     events.emit('challenge:end', { type: ch.type, zone: ch.zone, hits: r.hits, total: r.total, won: !!r.won, level: L, cancelled });
     ui.setChip(null);
-    if (cancelled) { active = null; hud.toast('Come back anytime!'); state.save('focus'); return; }
+    if (cancelled) { // walked away: the pad comes back so the rule card can open again later
+      ch.padMesh.visible = !earned(ch); ch.snooze = false;
+      ui.hideCard(); ui.showCount(null); active = null;
+      hud.toast('Come back anytime!'); state.save('focus'); return;
+    }
     res.best = Math.max(res.best || 0, r.hits);
     const got = `${ch.type === 'spot' ? 'You found' : 'You got'} ${r.hits} / ${r.total}`;
     active.phase = 'result'; active.t = 0;
@@ -246,6 +250,8 @@ export function init(ctx) {
       ch.padMesh.visible = !state.hasStar(ch.starId) && !result(ch.starId).won;
       if (!ch.star.collected && result(ch.starId).won) { ch.star.revealed = true; ch.star.mesh.visible = true; } // earned before a reload
     }
+    // objectives ran its game:start first: refresh its label/route now that won stars are revealed
+    const ob = objectives(); if (ob && ob.refresh) ob.refresh();
     showMeter(); requestAnimationFrame(() => ui.dock());
   });
   events.on('game:stop', () => { playing = false; if (active && active.ch) active.ch.cancel(); close(); freeze.stop(); P.coinMultiplier = 1; burstT = 0; });
@@ -254,10 +260,18 @@ export function init(ctx) {
     if (!playing || game.mode !== 'playing' || !ui.cardOpen || e.code !== 'Enter') return;
     e.preventDefault(); ui.pressPrimary();
   });
+  // gamepad A (main.js emits input:confirm on the nav.confirm edge while playing): press the card's
+  // primary button and consume the press so it does not also make Pip jump
+  events.on('input:confirm', c => {
+    if (!playing || game.mode !== 'playing' || !ui.cardOpen) return;
+    if (ui.pressPrimary()) c.consumed = true;
+  });
 
   const raceRunning = () => P.entities.some(e => e.type === 'race' && e.running);
   const celebrating = () => !!(objectives() && objectives().celebrating);
-  const eligible = playT => !active && !celebrating() && !game.respawn && !raceRunning() && ctrl.grounded && !(kit.zone() === 'hub' && playT < 60);
+  const ENEMY_R = 8; // no Freeze! next to a live Grumble (standing still there = getting bonked)
+  const enemyNear = () => { const p = ctrl.position; return P.entities.some(e => e.type === 'grumble' && e.alive && Math.hypot(e.x - p.x, e.z - p.z) < ENEMY_R); };
+  const eligible = playT => !active && !celebrating() && !game.respawn && !raceRunning() && ctrl.grounded && !enemyNear() && !(kit.zone() === 'hub' && playT < 60);
 
   let lastNow = performance.now(), dockT = 0;
   events.on('tick', ({ dt: frameDt }) => {
@@ -324,7 +338,8 @@ export function init(ctx) {
     debugHit: () => !!(active && active.phase === 'run' && active.ch.respond(true)),
     debugMiss: () => !!(active && active.phase === 'run' && active.ch.respond(false)),
     debugUpdate: () => { if (active && active.phase === 'run') { const r = active.ch.update(0); if (r) finish(r); } },
-    debugFreeze: () => (active ? false : freeze.trigger()),
+    debugFreeze: () => (active || enemyNear() ? false : freeze.trigger()),
+    debugConfirm: () => !!(input && input.debugPadA && input.debugPadA()), // simulated gamepad A edge (next physics step)
     debugClose: () => close(),
   };
 }

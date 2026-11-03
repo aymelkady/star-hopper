@@ -9,7 +9,9 @@
  *  - Touch, first play: the gesture tutorial (touch.showTutorial) comes first; the quest intro
  *    follows when it is tapped away (touch.onTutorialDismissed).
  * Returned API (window.__game.plugins.objectives): current(), skip(), order(), quest(), target(),
- *   introsShown, lastCelebration, debugHoldTimers(bool)
+ *   introsShown, lastCelebration, pendingGreat, challenging, refresh(), debugHoldTimers(bool)
+ *  - Skip on a Today's Quest star swaps it with the next non-quest star (quest stays 3 stars).
+ *  - While a focus-play challenge runs, the quest card + beacon step aside (R1: one goal).
  */
 import { createBeacon } from './beacon.js';
 import { createQuestCard } from '../ui/quest-card.js';
@@ -33,11 +35,13 @@ export function init(ctx) {
   const ORDER = world.STAR_ORDER;
   const byId = world.props.starById; // focus-play: live map (challenge stars register after this plugin)
   const beacon = createBeacon(THREE, scene);
-  const card = createQuestCard({ onSkip: () => skip(), onIntroTap: () => endIntro() });
+  const card = createQuestCard({ onSkip: () => skip(), onIntroTap: () => endIntro(), confirmSkip: !!isTouch }); // touch: "Skip ›" needs a 2nd tap
   card.show(false);
 
   let current = null, celebrateT = 0, introT = 0, still = false, active = false, introsShown = 0, lastCelebration = '', hold = false, tutorialPending = false;
   let quest = null;             // { date, stars:[ids], celebrated }
+  let pendingGreat = false;     // session-scoped: quest done, "Great session!" waiting for play mode
+  let challenging = false;      // a focus-play challenge is running: its chip is the only goal (R1)
   const skipRank = new Map(); let skipN = 0;
   let route = { target: null, via: null };
 
@@ -109,11 +113,24 @@ export function init(ctx) {
       card.setQuestDots(done, quest.stars.length, quest.stars.indexOf(current.id));
     } else card.setQuestDots(0, 0, -1);
   }
+  // A skipped Today's Quest star swaps places with the next uncollected non-quest star: that star
+  // joins the quest (still 3 stars, still finishable) and the skipped one waits right behind it.
+  function swapQuestStar(from) {
+    if (!quest || quest.celebrated) return false;
+    const i = quest.stars.indexOf(from); if (i < 0) return false;
+    const others = quest.stars.filter(id => id !== from);
+    const hasFocus = others.some(id => byId.get(id) && byId.get(id).focus);
+    const next = order(false).find(s => !quest.stars.includes(s.id) && !skipRank.has(s.id) && !(s.focus && hasFocus));
+    if (!next) return false;
+    quest.stars[i] = next.id;
+    if (state.data) { state.data.todayQuest = quest; state.save('quest'); }
+    return true;
+  }
   function skip() {
     if (!active || game.mode !== 'playing' || card.mode !== 'objective' || !current) return false;
     if (order().length <= 1) { hud.toast('Last star! You can do it!'); return false; }
     const from = current.id;
-    skipRank.set(from, ++skipN);
+    if (!swapQuestStar(from)) skipRank.set(from, ++skipN);
     advance();
     events.emit('objective:skipped', { starId: from, next: current && current.id });
     hud.toast('New goal!', 1200);
@@ -132,20 +149,25 @@ export function init(ctx) {
     state.save('quest');
   }
   function showIntro() {
-    if (!quest || quest.celebrated) return;
+    if (!quest || quest.celebrated || pendingGreat) return;
     const cur = current && current.id;
     card.intro(quest.stars.map(id => ({ text: shortText(byId.get(id)), done: have(id), current: id === cur })));
     introT = INTRO_S; introsShown++;
   }
   function endIntro() { if (card.mode !== 'intro') return; introT = 0; card.objective(); refreshCard(); }
-  function questJustDone() {
-    if (!quest || quest.celebrated || !quest.stars.every(have)) return false;
-    quest.celebrated = true; state.data.todayQuest = quest; state.save('quest');
-    return true;
+  const questDone = () => !!(quest && !quest.celebrated && quest.stars.length && quest.stars.every(have));
+  // "Great session!" waits (pendingGreat, cleared on game:stop) until the kid is actually playing:
+  // not paused / on a break / in the tutorial / mid-celebration.  `celebrated` is saved only when
+  // the card really shows, so a Save & stop in between keeps it for that slot's next session.
+  function maybeGreat() {
+    if (!pendingGreat || !active || !questDone()) { if (!questDone()) pendingGreat = false; return; }
+    if (game.mode !== 'playing' || celebrateT > 0 || introT > 0 || card.mode !== 'objective' || tutorialPending || (touch && touch.tutorialOpen)) return;
+    pendingGreat = false;
+    quest.celebrated = true; if (state.data) { state.data.todayQuest = quest; state.save('quest'); }
+    showGreatSession();
   }
   function showGreatSession() {
     if (!active || !quest) return;
-    if (game.mode !== 'playing') { events.once('game:resume', showGreatSession); return; } // e.g. a stretch break is up
     events.emit('ui:celebrate', { kind: 'quest', count: count(), total: TOTAL });
     api.pause();
     menus.showCard(`<div class="menu great" role="dialog" aria-label="Great session">
@@ -171,12 +193,22 @@ export function init(ctx) {
   events.on('game:resume', () => { if (active && tutorialPending && !touch.tutorialOpen) touch.showTutorial({ firstPlay: true }); });
   events.on('game:start', () => {
     active = true; skipRank.clear(); skipN = 0; celebrateT = 0; TOTAL = world.stars.length; // focus-play
-    tutorialPending = false;
+    tutorialPending = false; setChallenging(false);
     loadQuest(); card.objective(); card.show(true);
+    pendingGreat = questDone(); // finished last session but stopped before the card showed
     advance(true);
     if (needTutorial()) openTutorial(); else showIntro();
   });
-  events.on('game:stop', () => { active = false; tutorialPending = false; current = null; game.objective = null; card.show(false); beacon.hide(); celebrateT = introT = 0; });
+  events.on('game:stop', () => { active = false; tutorialPending = false; pendingGreat = false; setChallenging(false); current = null; game.objective = null; card.show(false); beacon.hide(); celebrateT = introT = 0; });
+  // R1: while a challenge runs, its chip (bottom centre) is the one goal; the quest card + beacon
+  // step aside and come back when it ends (won, lost or walked away)
+  function setChallenging(v) {
+    challenging = !!v;
+    if (challenging) card.root.dataset.challenge = '1'; else delete card.root.dataset.challenge;
+    if (challenging) beacon.hide();
+  }
+  events.on('challenge:start', () => { if (active) setChallenging(true); });
+  events.on('challenge:end', () => { setChallenging(false); if (active) { route = computeRoute(current); refreshCard(); } });
   events.on('pickup:star', p => {
     if (!active) return;
     const n = count();
@@ -202,13 +234,14 @@ export function init(ctx) {
     if (!active) return;
     if (celebrateT > 0 && !hold) {
       celebrateT -= rdt;
-      if (celebrateT <= 0) { card.objective(); advance(); if (questJustDone()) showGreatSession(); }
+      if (celebrateT <= 0) { card.objective(); advance(); if (questDone()) pendingGreat = true; }
     }
+    maybeGreat();
     if (introT > 0 && !hold) { introT -= rdt; if (introT <= 0) endIntro(); }
     routeT -= dt;
     if (routeT <= 0) { routeT = 0.1; route = computeRoute(current); }
     const pp = pip.root.position;
-    const d = beacon.update(dt, celebrateT > 0 ? null : route.target, pp, still || state.settings.reduceMotion, ctx.camera.position);
+    const d = beacon.update(dt, celebrateT > 0 || challenging ? null : route.target, pp, still || state.settings.reduceMotion, ctx.camera.position);
     if (card.mode === 'objective' && current) {
       const m = Number.isFinite(d) ? Math.max(0, Math.round(d)) : null;
       card.setDistance(m === null ? '' : route.via ? `➜ ${SHORT_ZONE[route.via]} ${m} m` : `${m} m`);
@@ -222,6 +255,9 @@ export function init(ctx) {
     target: () => route.target,
     skip,
     beacon,
+    refresh() { if (!active) return; route = computeRoute(current); refreshCard(); }, // focus-play: after it reveals won stars on game:start
+    get pendingGreat() { return pendingGreat; },
+    get challenging() { return challenging; },
     get celebrating() { return celebrateT > 0; },
     get introsShown() { return introsShown; },
     get tutorialPending() { return tutorialPending; },

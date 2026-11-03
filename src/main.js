@@ -69,7 +69,17 @@ const plugins = initPlugins({
   isTouch: IS_TOUCH,
   api: { pause, resume, saveAndStop, startGame, beginRespawn: reason => beginRespawn(reason) },
 });
-menus.showTitle(webgl ? '' : '3D graphics are not available on this device.');
+// The title must never take the page down with it (a malformed save once threw here, before the
+// render loop started = blank screen).  Fallback: a bare Play button that opens slot 1.
+function showTitleSafe(notice = '') {
+  try { menus.showTitle(notice); } catch (err) {
+    console.warn('[star-hopper] title failed, showing a plain Play button:', err && err.message);
+    const ov = document.getElementById('overlay');
+    ov.innerHTML = '<div class="menu title" role="dialog" aria-label="Title"><h1>Star Hopper</h1><button id="btn-play" class="btn big">▶ Play</button></div>';
+    document.getElementById('btn-play').addEventListener('click', () => startGame(1));
+  }
+}
+showTitleSafe(webgl ? '' : '3D graphics are not available on this device.');
 
 // ---------- lifecycle ----------
 function placeAtSpawn() {
@@ -78,9 +88,17 @@ function placeAtSpawn() {
   ctrl.bonks = 0;
   rig.snap(ctrl.position, ctrl.facing);
 }
+function clearRespawn() { // a respawn fade cut short by Save & stop must not leave #fade on (white screen)
+  game.respawn = null; ctrl.frozen = false;
+  document.getElementById('fade').classList.remove('on');
+}
 function startGame(slot) {
-  const data = state.load(slot);
-  world.applySave(data);
+  let data;
+  try { data = state.load(slot); world.applySave(data); } catch (err) {
+    console.warn('[star-hopper] save could not be loaded, starting it fresh:', err && err.message);
+    data = state.reset(slot); world.applySave(data);
+  }
+  clearRespawn();
   placeAtSpawn();
   game.mode = 'playing'; game.zone = null; game.respawn = null; game.acc = 0; game.saveTimer = 0;
   menus.hide(); hud.show(true); touch.show(true); input.setEnabled(true);
@@ -103,12 +121,14 @@ function resume() {
 }
 function saveAndStop() {
   const slot = state.slot;
+  clearRespawn();
+  for (const e of world.props.entities) if (e.type === 'race' && e.cancel) e.cancel(true); // quiet: no "Try again?"
   state.save('stop');
   events.emit('game:stop', { slot });
   state.close();
   game.mode = 'title'; hud.show(false); touch.show(false); input.setEnabled(true);
   window.__game.ready = false;
-  menus.showTitle();
+  showTitleSafe();
 }
 function beginRespawn(reason) {
   if (game.respawn) return;
@@ -152,6 +172,11 @@ function physicsStep(h) {
   input.setContext({ airborne: !ctrl.grounded });
   const a = input.update();
   if (a.pause.pressed) { pause(); return; }
+  if (a.nav.confirm) { // gamepad A: an open challenge card takes it (and Pip does not jump)
+    const c = { consumed: false };
+    events.emit('input:confirm', c);
+    if (c.consumed) { a.jump.pressed = false; a.jump.held = false; }
+  }
   if (a.focus.pressed) events.emit('input:focus', {});
   if (a.camReset.pressed) rig.resetBehind(ctrl.facing);
   world.props.updatePlatforms(h);

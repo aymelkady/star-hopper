@@ -144,7 +144,7 @@ export function build({ THREE, sb, P, extra, ground: g }) {
       }
       for (const l of lanterns) l.unlight();
       if (done) for (const sw of P.switches) if (sw.zone === 'cove') P.pressSwitch(sw, true);
-      race.cancel();
+      race.cancel(true); // a save load is not a lost race: no "Try again?"
     },
   };
 }

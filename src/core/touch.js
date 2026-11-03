@@ -103,7 +103,26 @@ html.reduce-motion .gs-hand { animation-duration: 3.6s !important; }
 @media (max-height: 430px), (max-width: 960px) { .gs-cards { gap: 10px; } .gs-card { width: 180px; } .gs-pad { width: 150px; height: 92px; } .gs-cap { font-size: 19px; } #gs-tutorial h2 { font-size: 26px; margin-bottom: 8px; } .gs-hint { margin-top: 10px; } }
 `;
 
+// iPad Safari ignores user-scalable=no: block pinch-zoom (gesturestart) and double-tap zoom (two
+// touchends < 300 ms apart on anything that is not a control).  Pointer events (the gesture layer)
+// were already dispatched by then, so taps / jumps / swipes are unaffected.
+const DOUBLE_TAP_MS = 300;
+let zoomGuards = false;
+export function installZoomGuards(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc || zoomGuards) return; zoomGuards = true;
+  const stop = e => { if (e.cancelable !== false) e.preventDefault(); };
+  for (const t of ['gesturestart', 'gesturechange', 'gestureend']) doc.addEventListener(t, stop, { passive: false });
+  let lastEnd = -1e9;
+  doc.addEventListener('touchend', e => {
+    const t = e.timeStamp || performance.now();
+    const ctl = e.target && e.target.closest && e.target.closest('button, input, select, textarea, a, label, [role=button]');
+    if (!ctl && t - lastEnd < DOUBLE_TAP_MS && e.cancelable) e.preventDefault();
+    lastEnd = t;
+  }, { passive: false });
+}
+
 export function createTouch(root = document.body) {
+  installZoomGuards();
   // jumpHeld/longHeld/poundHeld kept for input.js compatibility; crouchHeld = swipe-down on the ground
   const state = { mx: 0, my: 0, jumpHeld: false, longHeld: false, poundHeld: false, crouchHeld: false, camDx: 0, camDy: 0, active: false };
   const latch = { jump: false, longJump: false, pound: false, pause: false };
