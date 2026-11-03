@@ -19,6 +19,9 @@
  *
  * DOM: #touch-controls > #gs-stick, .gs-fx pool.  CSS is injected (<style id="gs-style">).
  * Exports GESTURE_HELP for the Controls card; touch.showTutorial() opens the "How to move" overlay.
+ * The first-play tutorial is NOT auto-shown here: systems/objectives.js owns the start-of-session
+ * flow and calls touch.showTutorial({ firstPlay: true }) (tutorial first, then Today's Quest).
+ * touch.onTutorialDismissed(fn) -> fn({ seen }) whenever the overlay closes (seen = tapped away).
  */
 export const IS_TOUCH = typeof window !== 'undefined' &&
   (('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0);
@@ -376,6 +379,7 @@ export function createTouch(root = document.body) {
 
   // ---- first-play tutorial ----
   let tut = null, tutAuto = false;
+  const dismissFns = new Set();
   function showTutorial(auto = false) {
     if (!tut) {
       tut = document.createElement('div');
@@ -405,6 +409,7 @@ export function createTouch(root = document.body) {
         if (g && g.state && g.state.setSetting) { if (!g.state.settings.gestureTutorialSeen) g.state.setSetting('gestureTutorialSeen', true); }
       } catch (_) { /* storage blocked */ }
     }
+    for (const fn of [...dismissFns]) { try { fn({ seen: !!seen }); } catch (err) { console.error('[touch] tutorial listener failed', err); } }
   }
 
   return {
@@ -421,10 +426,11 @@ export function createTouch(root = document.body) {
     takeCamera() { const r = { dx: state.camDx, dy: state.camDy }; state.camDx = state.camDy = 0; return r; },
     show(v) {
       el.hidden = !(v && IS_TOUCH);
-      if (!v) { resetAll(); if (tutAuto) hideTutorial(false); return; }
-      if (IS_TOUCH && !settings().gestureTutorialSeen && !(tut && !tut.hidden)) showTutorial(true);
+      if (!v) { resetAll(); if (tutAuto) hideTutorial(false); return; } // pause / stop closes a first-play tutorial unseen
     },
-    showTutorial: () => showTutorial(false),
+    /** opts.firstPlay: closes (unseen) when the touch layer hides, e.g. on pause; objectives re-opens it */
+    showTutorial: (opts = {}) => showTutorial(!!(opts && opts.firstPlay)),
+    onTutorialDismissed(fn) { dismissFns.add(fn); return () => dismissFns.delete(fn); },
     hideTutorial: () => hideTutorial(true),
     /** test/debug snapshot of the recogniser */
     debug() { return { pointers: [...ptrs.values()].map(p => ({ id: p.id, kind: p.kind, dir: p.dir, multi: p.multi })), group: group ? [...group.ids] : null, stickId, latch: { ...latch } }; },

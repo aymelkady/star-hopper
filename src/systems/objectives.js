@@ -6,6 +6,8 @@
  *  - Zone wayfinding: target = zone entrance while Pip is in the hub / another zone.
  *  - pickup:star -> ui:celebrate + 2.5 s celebration card -> advance -> objective:changed.
  *  - Today's Quest (3 stars, date-stamped in save data.todayQuest) + "Great session!" card.
+ *  - Touch, first play: the gesture tutorial (touch.showTutorial) comes first; the quest intro
+ *    follows when it is tapped away (touch.onTutorialDismissed).
  * Returned API (window.__game.plugins.objectives): current(), skip(), order(), quest(), target(),
  *   introsShown, lastCelebration, debugHoldTimers(bool)
  */
@@ -27,14 +29,14 @@ const SHORT_ZONE = { meadow: 'Meadow', cove: 'Cove', towers: 'Towers', hub: 'Hub
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 export function init(ctx) {
-  const { THREE, scene, events, state, world, ctrl, pip, game, api, menus, hud } = ctx;
+  const { THREE, scene, events, state, world, ctrl, pip, game, api, menus, hud, touch, isTouch } = ctx;
   const ORDER = world.STAR_ORDER;
   const byId = world.props.starById; // focus-play: live map (challenge stars register after this plugin)
   const beacon = createBeacon(THREE, scene);
   const card = createQuestCard({ onSkip: () => skip(), onIntroTap: () => endIntro() });
   card.show(false);
 
-  let current = null, celebrateT = 0, introT = 0, still = false, active = false, introsShown = 0, lastCelebration = '', hold = false;
+  let current = null, celebrateT = 0, introT = 0, still = false, active = false, introsShown = 0, lastCelebration = '', hold = false, tutorialPending = false;
   let quest = null;             // { date, stars:[ids], celebrated }
   const skipRank = new Map(); let skipN = 0;
   let route = { target: null, via: null };
@@ -158,12 +160,23 @@ export function init(ctx) {
   }
 
   // ---- events ----
+  // start of session: (touch, first time) gesture tutorial -> Today's Quest intro -> play
+  const needTutorial = () => !!(isTouch && touch && touch.showTutorial && !state.settings.gestureTutorialSeen);
+  function openTutorial() { tutorialPending = true; touch.showTutorial({ firstPlay: true }); }
+  if (touch && touch.onTutorialDismissed) touch.onTutorialDismissed(({ seen }) => {
+    if (!tutorialPending || !seen) return;          // closed by pause/stop: re-opened on resume
+    tutorialPending = false;
+    if (active) showIntro();
+  });
+  events.on('game:resume', () => { if (active && tutorialPending && !touch.tutorialOpen) touch.showTutorial({ firstPlay: true }); });
   events.on('game:start', () => {
     active = true; skipRank.clear(); skipN = 0; celebrateT = 0; TOTAL = world.stars.length; // focus-play
+    tutorialPending = false;
     loadQuest(); card.objective(); card.show(true);
-    advance(true); showIntro();
+    advance(true);
+    if (needTutorial()) openTutorial(); else showIntro();
   });
-  events.on('game:stop', () => { active = false; current = null; game.objective = null; card.show(false); beacon.hide(); celebrateT = introT = 0; });
+  events.on('game:stop', () => { active = false; tutorialPending = false; current = null; game.objective = null; card.show(false); beacon.hide(); celebrateT = introT = 0; });
   events.on('pickup:star', p => {
     if (!active) return;
     const n = count();
@@ -211,6 +224,7 @@ export function init(ctx) {
     beacon,
     get celebrating() { return celebrateT > 0; },
     get introsShown() { return introsShown; },
+    get tutorialPending() { return tutorialPending; },
     get lastCelebration() { return lastCelebration; },
     debugHoldTimers(v) { hold = !!v; }, // tests: freeze the celebration / intro cards for screenshots
   };

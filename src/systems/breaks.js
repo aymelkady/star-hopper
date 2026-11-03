@@ -110,7 +110,8 @@ export function init(ctx) {
       if (stretch > 0) { stretch = Math.max(0, stretch - dt); drawStretch(); }
       return;
     }
-    if (game.mode !== 'playing' || !state.data || !total()) { draw(); return; }
+    const tutorialUp = !!(ctx.touch && ctx.touch.tutorialOpen); // "How to move" overlay = a locked card
+    if (game.mode !== 'playing' || !state.data || !total() || tutorialUp) { draw(); return; }
     elapsed += dt * (game.timeScale ?? 1);
     const rem = remaining();
     for (const w of WARN) if (prevRem > w.s && rem <= w.s && rem > 0) {

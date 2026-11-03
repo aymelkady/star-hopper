@@ -36,7 +36,7 @@ const COURSES = {
     { zone: 'cove', pad: [28, -9.5], path: sine(31, -9.5, 42.5, -9.5, 2.3, 2), after: 'cove-2' },
     { zone: 'towers', pad: [-7.5, -56], path: sine(-9.5, -54, -25, -54, 1.0, 1.5), lateral: 1.4, after: 'towers-2' },
   ],
-  two: { pad: [45, -23], padMaxY: 5, lantern: [71, -29.5], after: 'focus-gem-cove' },
+  two: { pad: [45, -23], padMaxY: 5, lantern: [72, -29], after: 'focus-gem-cove' },
   spot: { center: [-16, -43], r: 6.5, plank: [-16, -32.8, -37.2], pad: [-16, -38.3], after: 'focus-gem-towers' },
 };
 const freshFocus = () => ({ levels: Object.fromEntries(TYPES.map(t => [t, 1])), history: {}, bursts: 0, results: {} });

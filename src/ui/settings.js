@@ -4,7 +4,7 @@
  * Every change -> state.setSetting(key, value) (persisted, emits settings:changed).
  * Keys: breakMinutes (0 = off), helperMode, focusMode, reduceMotion, cameraSpeed (0.6/1/1.5),
  *       invertY, masterVolume ("Sound", 0..1), musicVolume (0..1), haptics (touch only).
- * Also applies html.reduce-motion and gates navigator.vibrate on settings.haptics.
+ * Also applies html.reduce-motion (core/touch.js reads settings.haptics itself).
  * API: open(returnTo)
  */
 export const NAME = 'settings';
@@ -36,11 +36,6 @@ export function init(ctx) {
   applyMotion();
   events.on('settings:changed', p => { if (p.key === 'reduceMotion') applyMotion(); });
 
-  // haptics gate (touch buttons call navigator.vibrate directly)
-  try {
-    const nav = navigator, orig = nav.vibrate && nav.vibrate.bind(nav);
-    if (orig) nav.vibrate = p => (state.settings.haptics === false ? false : orig(p));
-  } catch (_) { /* read-only in some browsers */ }
 
   const id = k => `set-${k}`;
   function rowHtml(r) {

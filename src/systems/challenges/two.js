@@ -14,37 +14,38 @@ export function createTwo(kit, def) {
   const { THREE, scene, events, P, PAL } = kit;
   const padY = kit.ground(def.pad[0], def.pad[1], def.padMaxY ?? 5);
   // ---- lantern post standing in the sea next to the ride (no collider: it is off the route) ----
-  const [lx, lz] = def.lantern, base = -4.5;
+  const [lx, lz] = def.lantern, base = -4.5, HEAD = 6.8; // head at y = 2.3: eye level from the logs
   const post = P.vcMesh(b => {
-    b.cyl(0, 0, 0, 0.32, 8.6, PAL.woodLo, { collide: false, seg: 7 });
+    b.cyl(0, 0, 0, 0.32, HEAD - 0.85, PAL.woodLo, { collide: false, seg: 7 });
     b.cyl(0, 3.9, 0, 0.6, 0.35, PAL.wood, { collide: false, seg: 8 });           // float ring at the waterline
-    b.box(0, 8.75, 0, 1.5, 0.2, 1.5, PAL.lanternFrame, { collide: false });
-    b.cone(0, 10.35, 0, 1.25, 0.8, PAL.roofRed, { seg: 4, yaw: Math.PI / 4 });
-    b.sphere(0, 11.25, 0, 0.16, PAL.gold, { detail: 0 });
-    for (const [dx, dz] of [[-0.62, -0.62], [0.62, -0.62], [-0.62, 0.62], [0.62, 0.62]]) b.cyl(dx, 8.85, dz, 0.07, 1.5, PAL.lanternFrame, { collide: false, seg: 4 });
+    b.box(0, HEAD - 0.85, 0, 1.7, 0.2, 1.7, PAL.lanternFrame, { collide: false });
+    b.box(0, HEAD + 0.85, 0, 1.7, 0.2, 1.7, PAL.lanternFrame, { collide: false });
+    b.cone(0, HEAD + 0.95, 0, 1.4, 0.8, PAL.roofRed, { seg: 4, yaw: Math.PI / 4 });
+    b.sphere(0, HEAD + 1.85, 0, 0.16, PAL.gold, { detail: 0 });
+    for (const [dx, dz] of [[-0.72, -0.72], [0.72, -0.72], [-0.72, 0.72], [0.72, 0.72]]) b.cyl(dx, HEAD - 0.8, dz, 0.07, 1.6, PAL.lanternFrame, { collide: false, seg: 4 });
   });
   post.position.set(lx, base, lz); scene.add(post);
   const headMat = kit.named(new THREE.MeshLambertMaterial({ color: C.off[0], emissive: C.off[1] }), 'two-lantern');
-  const head = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.3, 1.1), headMat);
-  head.position.y = 9.6; post.add(head);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.6, 1.5), headMat);
+  head.position.y = HEAD; post.add(head);
   const glowMat = kit.named(new THREE.SpriteMaterial({ map: kit.glowTexture(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 'two-glow');
-  const glow = new THREE.Sprite(glowMat); glow.scale.setScalar(6); glow.position.y = 9.6; glow.visible = false; post.add(glow);
+  const glow = new THREE.Sprite(glowMat); glow.scale.setScalar(6); glow.position.y = HEAD; glow.visible = false; post.add(glow);
 
   let done = false, phase = 'idle', light = 'off', t = 0, dur = 0, greens = 0, hits = 0, wrong = 0, tapped = false, greenTime = 1.8, unsub = null;
   function setLight(c) {
     light = c; headMat.color.setHex(C[c][0]); headMat.emissive.setHex(C[c][1]);
     glow.visible = c !== 'off'; glowMat.color.setHex(c === 'green' ? 0x7dff9a : 0xffe070);
   }
-  const chip = () => kit.chip(`🏮 ${Math.max(0, hits - wrong)} / ${GREENS}`);
-  function toYellow() { setLight('yellow'); t = 0; dur = 1.5 + Math.random() * 1.5; }
-  function toGreen() { setLight('green'); t = 0; dur = greenTime; tapped = false; }
+  const chip = () => kit.chip(`${light === 'green' ? '🟢' : '🟡'} ${Math.max(0, hits - wrong)} / ${GREENS}`); // mirrors the lantern
+  function toYellow() { setLight('yellow'); t = 0; dur = 1.5 + Math.random() * 1.5; chip(); }
+  function toGreen() { setLight('green'); t = 0; dur = greenTime; tapped = false; chip(); }
   function tap() {
     if (phase !== 'run') return;
     if (light === 'green') { if (tapped) return; tapped = true; hits++; kit.hit(hits - 1, Math.round(t * 1000), at()); }
     else { wrong++; kit.miss('early', at()); }
     chip();
   }
-  const at = () => ({ x: lx, y: base + 9.6, z: lz });
+  const at = () => ({ x: lx, y: base + HEAD, z: lz });
   function endGreen() { greens++; if (!tapped) kit.miss('timeout', at()); chip(); }
 
   return {
