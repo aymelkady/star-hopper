@@ -44,13 +44,14 @@ export function build({ THREE, sb, P, extra }) {
   P.checkpoint('towers-cp2', 22, -78, { y: 10.5, facing: Math.PI });
 
   // ---- triple-jump gap (star 2): runway -> 3 m gap -> ledge 7 m up (too high for 1 or 2 jumps) ----
-  sb.slab(-19, 0, -54, 26, 1, 6, STONE);
-  sb.slab(-19, 0.02, -54, 25, 0.04, 1, 0xffe27a, { collide: false, jitter: 0 });
-  sb.slab(-40.5, 7, -54, 11, 14, 9, STONE2, { flags: { noWallKick: true } });
-  sb.slab(-40.5, 7.05, -54, 11.2, 0.3, 9.2, TOP, { collide: false });
-  star('towers-2', 'Triple-jump the gap', -41.5, 8.6, -54, { task: 'reach' });
-  P.coinLine(-8, -54, -30, -54, 10, 1, { abs: 0 });
-  P.coinRing(-41, -54, 2.8, 6, 1, { abs: 7 });
+  // runway x -6..-26.6 with three yellow "jump here" stripes spaced like a held 1st and 2nd jump
+  sb.slab(-16.3, 0, -54, 20.6, 1, 6, STONE);
+  for (const x of [-8, -15.3, -23.6]) sb.slab(x, 0.03, -54, 0.6, 0.06, 5.6, 0xffe27a, { collide: false, jitter: 0 });
+  sb.slab(-33.6, 7, -54, 11, 14, 9, STONE2, { flags: { noWallKick: true } });
+  sb.slab(-33.6, 7.05, -54, 11.2, 0.3, 9.2, TOP, { collide: false });
+  star('towers-2', 'Triple-jump the gap', -35, 8.6, -54, { task: 'reach' });
+  P.coinLine(-8, -54, -25, -54, 8, 1, { abs: 0 });
+  P.coinRing(-34.5, -54, 2.8, 6, 1, { abs: 7 });
 
   // ---- red coins up the spiral (star 3) ----
   const S = [[-16, -62, 0.5, 2.5], [-21, -68, 1.0, 2.5], [-24, -73.2, 1.3, 2.0]];

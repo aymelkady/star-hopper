@@ -42,6 +42,6 @@ export function build({ sb, P, extra }) {
   P.coinLine(8, 2, 20, 2, 4, 1);
   P.coinLine(0, -8, 0, -22, 4, 1);
 
-  P.checkpoint('hub', -3.5, 15.5, { facing: Math.PI });
+  P.checkpoint('hub', -4.5, 9, { facing: Math.PI });
   return { spawn: { x: 0, y: 0.1, z: 14, facing: Math.PI } };
 }

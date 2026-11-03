@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Star Hopper">
+<meta name="theme-color" content="#3d8ef0">
+<title>Star Hopper</title>
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<canvas id="game" tabindex="-1" aria-label="Star Hopper game view"></canvas>
+<div id="hud" hidden>
+  <div class="hud-left">
+    <div id="hud-stars" class="chip"><span class="ico star" aria-hidden="true">★</span><span class="val">0 / 15</span></div>
+    <div id="hud-coins" class="chip"><span class="ico coin" aria-hidden="true"></span><span class="val">0</span></div>
+    <div id="hud-redcoins" class="chip" hidden><span class="ico redcoin" aria-hidden="true"></span><span class="val">0 / 8</span></div>
+    <div id="hud-timer" class="chip" hidden><span class="ico" aria-hidden="true">⏱</span><span class="val">30</span></div>
+    <div id="hud-zone" class="chip zone">Treehouse Hub</div>
+  </div>
+  <div class="hud-right">
+    <button id="btn-focus" class="icon-btn" aria-label="Focus mode" title="Focus mode (F)"><svg viewBox="0 0 24 24"><path d="M12 5C6.5 5 2.7 9.2 1.5 12c1.2 2.8 5 7 10.5 7s9.3-4.2 10.5-7C21.3 9.2 17.5 5 12 5zm0 11.5A4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 0 1 0 9zm0-2.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg></button>
+    <button id="btn-pause" class="icon-btn" aria-label="Pause" title="Pause (Esc)"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg></button>
+  </div>
+</div>
+<div id="quest-card"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="fade"></div>
+<div id="overlay"></div>
+<div id="rotate-hint">⟳ Turn sideways for the best view</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

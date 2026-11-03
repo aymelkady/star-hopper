@@ -33,7 +33,8 @@ export const TUNING = {
   killY: -20, maxBonks: 3, hurtInvuln: 1.2, knockback: 8, knockApex: 1.2,
 };
 const T = TUNING;
-const jumpV = apex => Math.sqrt(2 * T.gravityUp * apex);
+// + g*dt/2 compensates semi-implicit Euler at 60 Hz so the apex matches the tuned height exactly
+const jumpV = (apex, g = T.gravityUp) => Math.sqrt(2 * g * apex) + g / 120;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 
 export function createController({ col, events, state }) {
@@ -61,7 +62,7 @@ export function createController({ col, events, state }) {
     const f = c.facing;
     const sp = Math.max(T.longJumpSpeed, Math.hypot(vel.x, vel.z));
     vel.x = Math.sin(f) * sp; vel.z = Math.cos(f) * sp;
-    vel.y = Math.sqrt(2 * T.gravityUp * T.longJumpGravity * T.longJumpApex);
+    vel.y = jumpV(T.longJumpApex, T.gravityUp * T.longJumpGravity);
     c.mode = 'longjump'; c.tier = 0; c.cut = true; c.grounded = false; c.jumpedSinceGround = true; c.sinceJumpPress = 9;
     c.jumpImpulse = 0.6; c.lastJumpTier = 0;
     ev('player:longjump');
@@ -158,9 +159,23 @@ export function createController({ col, events, state }) {
     const dx = vel.x * dt, dy = vel.y * dt, dz = vel.z * dt;
     const n = Math.max(1, Math.min(12, Math.ceil(Math.hypot(dx, dy, dz) / (T.radius * 0.5))));
     for (let i = 0; i < n; i++) { pos.x += dx / n; pos.y += dy / n; pos.z += dz / n; resolve(pre); }
-    if (!c.grounded && wasG && vel.y <= 0.01 && (c.mode === 'ground' || c.mode === 'poundland')) {
-      const save = pos.y; pos.y -= T.stepSnap; resolve(pre);
-      if (!c.grounded) pos.y = save;
+    if (!c.grounded && wasG && vel.y <= 0.01 && (c.mode === 'ground' || c.mode === 'poundland')) snapDown();
+  }
+
+  // Stick to the ground when walking down slopes/steps: probe downward for a walkable surface only
+  // (walls are ignored here so ledges never shove Pip sideways).
+  function snapDown() {
+    const base = pos.y;
+    for (let d = 0.04; d <= T.stepSnap + 1e-6; d += 0.04) {
+      col.sphereContacts(pos.x, base - d + T.radius, pos.z, T.radius, contacts);
+      let best = null;
+      for (const ct of contacts) if (ct.ny >= T.walkableNY && ct.depth > 1e-6 && (!best || ct.depth / ct.ny > best.depth / best.ny)) best = ct;
+      if (best) {
+        pos.y = base - d + Math.min(best.depth / best.ny, d);
+        c.grounded = true; c.groundCol = best.col; if (vel.y < 0) vel.y = 0;
+        c.groundNormal.x = best.nx; c.groundNormal.y = best.ny; c.groundNormal.z = best.nz;
+        return;
+      }
     }
   }
 
