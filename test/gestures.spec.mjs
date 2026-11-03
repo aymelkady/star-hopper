@@ -351,6 +351,12 @@ async function tutorial(browser) {
   const viewport = { width: 1080, height: 810 };
   const { context, page, errors, T } = await open(browser, viewport, { tutorialSeen: false });
   ok(await page.isVisible('#gs-tutorial'), 'tutorial overlay shows on first touch game start');
+  // sequencing (objectives.js): tutorial first, Today's Quest intro only after it is tapped away
+  ok(!await page.isVisible('#quest-card .qc-intro') && await page.evaluate(() => window.__game.plugins.objectives.introsShown === 0),
+    "Today's Quest intro waits while the tutorial is up");
+  const rem0 = await page.evaluate(() => window.__game.plugins.breaks.remaining());
+  await T.wait(1000);
+  ok(await page.evaluate(() => window.__game.plugins.breaks.remaining()) === rem0, 'break timer does not count while the tutorial is up');
   const caps = await page.$$eval('#gs-tutorial .gs-cap', n => n.map(x => x.textContent));
   ok(caps.length === 4 && caps.every(c => c.split(/\s+/).length <= 4), `captions: ${caps.join(' | ')}`);
   ok(await page.$$eval('#gs-tutorial .gs-hand', n => n.every(x => getComputedStyle(x).animationName !== 'none')), 'hand glyphs are CSS-animated');
@@ -366,12 +372,15 @@ async function tutorial(browser) {
   const t = await mark(page);
   await T.tap(2, 800, 400, 40); await T.wait(300);
   ok(!await page.isVisible('#gs-tutorial'), 'tap after 1.5 s dismisses');
+  ok(await page.evaluate(() => window.__game.plugins.objectives.introsShown === 1 && !document.querySelector('#quest-card .qc-intro').hidden),
+    "Today's Quest intro appears right after the tutorial");
   ok(await count(page, 'player:jump', t) === 0, 'the dismissing tap does not reach the game');
   ok(await page.evaluate(() => window.__game.state.settings.gestureTutorialSeen === true), 'gestureTutorialSeen persisted in settings');
   await page.evaluate(() => window.__game.touch.showTutorial());
   ok(await page.isVisible('#gs-tutorial'), 'touch.showTutorial() reopens it (Controls card)');
   await T.wait(1600); await T.tap(2, 800, 400, 40); await T.wait(100);
   ok(!await page.isVisible('#gs-tutorial'), 'reopened tutorial dismisses');
+  ok(await page.evaluate(() => window.__game.plugins.objectives.introsShown === 1), 'reopening from Controls does not replay the quest intro');
   await page.reload();
   await page.waitForFunction(() => window.__game && document.getElementById('btn-play'));
   await page.tap('#btn-play'); await page.tap('#slot-1');
