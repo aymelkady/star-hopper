@@ -31,7 +31,9 @@ const SPOTS = {
   'cove-beach': [34, 1, 12, Math.PI / 2 + 0.35],
   'meadow-waterfall': [-74, 1, 3, -Math.PI / 2],
   'meadow-hill': [HILLX(), 13, -22, 0.6],
-  'close-wall': [-37.6, 1, 20, Math.PI / 2],   // back 0.65 m from the 4 m meadow block's east face
+  // back 0.65 m from the 4 m meadow block's east face; the camera first rises over the block, then
+  // (Pip standing still) swings round to the open side.  1.4 s = mid-swing, both visible.
+  'close-wall': [-37.6, 1, 20, Math.PI / 2, 1400],
   bell: [1.3, 17.7, -94.2, 0.2],               // right under the summit bell
 };
 const OVERLAYS = ['#quest-card', '#toast', '#focus-meter'];
@@ -61,11 +63,11 @@ async function startPlay(page) {
   await page.waitForFunction(() => window.__game.ready);
   await page.waitForTimeout(600);
 }
-async function goTo(page, [x, y, z, f]) {
+async function goTo(page, [x, y, z, f, wait = 900]) {
   await page.evaluate(([x, y, z, f]) => {
     const g = window.__game; g.teleport(x, y, z); g.player.facing = f; g.camera.snap(g.player.position, f);
   }, [x, y, z, f]);
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(wait);
 }
 
 const browser = await chromium.launch();

@@ -284,7 +284,7 @@ export function init(ctx) {
         else { const r = a.ch.update(dt); if (r) finish(r); }
       } else if (a.phase === 'result' && (d > 8 || (ui.cardKind === 'win' && a.t > 3.5))) close();
     }
-    freeze.update(dt, eligible);
+    freeze.update(dt, rdt, eligible);
     // meter: progress toward the current objective target
     if (burstT > 0) {
       burstT -= dt; trailT -= frameDt;

@@ -46,14 +46,15 @@ export function createFreeze(kit) {
     session() { left = Math.random() < 0.5 ? 2 : 3; playT = 0; next = GAP(); phase = 'idle'; ui.freeze(null); },
     trigger() { if (!state.settings.freezeEnabled || phase !== 'idle') return false; return start(); },
     stop() { phase = 'idle'; ui.freeze(null); },
-    update(dt, eligible) {
+    // dt = game time (schedule), rdt = wall-clock time (the card + 2 s ring are real seconds for the child)
+    update(dt, rdt, eligible) {
       playT += dt;
       if (phase === 'idle') {
         if (left > 0 && playT >= next && state.settings.freezeEnabled !== false && eligible(playT)) { left--; next = playT + GAP(); start(); }
         return;
       }
       if (!state.settings.freezeEnabled && phase !== 'show') { this.stop(); return; } // switched off mid-card
-      t += dt;
+      t += rdt;
       const v = Math.hypot(ctrl.velocity.x, ctrl.velocity.z);
       if (phase === 'ready') { if (t >= READY) { phase = 'hold'; t = 0; } }
       else if (phase === 'hold') {

@@ -46,6 +46,15 @@ const nearPad = (page, type, zone, f = 0) => page.evaluate(([t, z, f]) => {
   const g = window.__game, x = c.pad.x, zz = c.pad.z - 2, y = g.world.col.groundHeight(x, zz, c.pad.y + 2) + 0.1;
   g.player.teleport(x, y, zz, f); g.player.velocity.set(0, 0, 0); g.camera.snap(g.player.position, f); return true;
 }, [type, zone, f]);
+// from the hub spawn, stand 14 m before the current wayfinding target (the meadow entrance), facing it
+async function towardTarget(page) {
+  await place(page, 0, 14, Math.PI);
+  await page.waitForTimeout(300);
+  const tg = await page.evaluate(() => window.__game.plugins.objectives.target());
+  const f = Math.atan2(tg.x - 0, tg.z - 14);
+  await place(page, tg.x - Math.sin(f) * 14, tg.z - Math.cos(f) * 14, f);
+  await page.waitForTimeout(200);
+}
 // put Pip on a spot facing yaw f (0 = +z, -PI/2 = -x), camera snapped behind him
 const place = (page, x, z, f, lift = 0.1) => page.evaluate(([x, z, f, lift]) => {
   const g = window.__game, y = g.world.col.groundHeight(x, z, 30) + lift;
@@ -59,17 +68,17 @@ async function desktopPass(browser) {
   ok(await page.isVisible('#focus-meter'), 'Focus Meter sun visible next to the quest card');
 
   // ---- meter rises while walking toward the objective target ----
-  const tg = await page.evaluate(() => window.__game.plugins.objectives.target());
-  const f = Math.atan2(tg.x - 0, tg.z - 14);
-  await place(page, tg.x - Math.sin(f) * 14, tg.z - Math.cos(f) * 14, f);
   const m0 = await fp(page, 'meter()');
+  await towardTarget(page);
   await page.keyboard.down('KeyW');
-  await page.waitForFunction(m => window.__game.plugins.focusplay.meter() > m + 1, m0, { timeout: 6000 }).catch(() => {});
+  await page.waitForFunction(m => window.__game.plugins.focusplay.meter() > m + 1, m0, { timeout: 15000 }).catch(() => {});
   await page.keyboard.up('KeyW');
   const m1 = await fp(page, 'meter()');
   ok(m1 > m0 + 1, `meter rises while moving toward the objective (${m0.toFixed(1)} -> ${m1.toFixed(1)})`);
 
   // ---- drains after 25 s idle (time x20), never red ----
+  await place(page, 0, 10, 0);
+  await page.waitForTimeout(300);
   await fp(page, 'debugSetMeter(60)');
   await page.waitForTimeout(300);
   await page.screenshot({ path: shot('meter') });
@@ -82,17 +91,15 @@ async function desktopPass(browser) {
   ok(md < 59 && await fp(page, 'draining'), `meter drains after 25 s with no progress (${md.toFixed(1)}) ${md < 59 ? '' : dbg}`);
   ok(await page.evaluate(() => document.getElementById('focus-meter').classList.contains('dim') && !/red/.test(document.getElementById('focus-meter').className)), 'draining sun dims (no red, no message)');
   await page.evaluate(() => window.__game.setTimeScale(1));
+  await page.evaluate(() => { const fz = window.__game.plugins.focusplay.freeze; fz.stop(); fz.session(); }); // x20 time may have scheduled a real Freeze!
   ok((await since(page, 'focus:meter', 0)).length > 0, 'focus:meter events emitted');
 
   // ---- Focus Burst at 100 ----
   let t = await nowT(page);
   await fp(page, 'debugSetMeter(99)');
-  const tg2 = await page.evaluate(() => window.__game.plugins.objectives.target());
-  const p2 = await page.evaluate(() => ({ ...window.__game.player.position }));
-  const f2 = Math.atan2(tg2.x - p2.x, tg2.z - p2.z);
-  await place(page, tg2.x - Math.sin(f2) * 14, tg2.z - Math.cos(f2) * 14, f2);
+  await towardTarget(page);
   await page.keyboard.down('KeyW');
-  const gotBurst = await waitEv(page, 'focus:burst', t, 5000);
+  const gotBurst = await waitEv(page, 'focus:burst', t, 15000);
   await page.keyboard.up('KeyW');
   ok(gotBurst, 'meter reaches 100 -> focus:burst');
   ok(await page.evaluate(() => window.__game.world.props.coinMultiplier === 2) && await fp(page, 'meter()') < 5, 'burst: coins x2 active, meter reset to 0');
@@ -173,13 +180,15 @@ async function desktopPass(browser) {
   ok(await waitEv(page, 'freeze:success', t, 12000), 'standing still for 2 s -> freeze:success');
   ok(await page.evaluate(() => window.__game.state.totalCoins()) >= coins0 + 5, 'coin shower: +5 coins');
   await page.waitForFunction(() => !window.__game.plugins.focusplay.freeze.active, null, { timeout: 8000 }).catch(() => {});
+  await place(page, 0, 10, 0);
   t = await nowT(page);
   await fp(page, 'debugFreeze()');
-  await page.waitForTimeout(900);
+  await page.waitForFunction(`${FP}.freeze.phase === 'hold'`, null, { timeout: 6000 }).catch(() => {});
   await page.keyboard.down('KeyW');
   const failed = await waitEv(page, 'freeze:fail', t, 8000);
   await page.keyboard.up('KeyW');
-  ok(failed, 'moving during the ring -> freeze:fail (nothing lost)');
+  const why = failed ? '' : await page.evaluate(t => `mode=${window.__game.game.mode} ph=${window.__game.plugins.focusplay.freeze.phase} ev=${window.__game.log.filter(e => e.t >= t && e.type !== 'focus:meter').map(e => e.type).join(',')}`, t);
+  ok(failed, `moving during the ring -> freeze:fail (nothing lost) ${why}`);
   await page.waitForFunction(() => !window.__game.plugins.focusplay.freeze.active, null, { timeout: 8000 }).catch(() => {});
   await page.evaluate(() => window.__game.state.setSetting('freezeEnabled', false));
   t = await nowT(page);

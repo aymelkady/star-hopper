@@ -10,7 +10,8 @@
     "test": "node test/smoke.spec.mjs",
     "test:fx": "node test/audio-fx.spec.mjs",
     "test:gestures": "node test/gestures.spec.mjs",
-    "test:focus": "node test/focusplay.spec.mjs"
+    "test:focus": "node test/focusplay.spec.mjs",
+    "test:camera": "node test/camera.spec.mjs"
   },
   "license": "MIT",
   "devDependencies": {

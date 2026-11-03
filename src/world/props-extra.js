@@ -174,6 +174,8 @@ export function bell(P, x, y, z) {
   // camera: fades to 30 % when the camera is within 2 m or the bell hides Pip; large = the camera
   // pulls back and up when Pip stands under it (see core/camera.js)
   ent.fader = registerCamFader({ name: 'bell', object: bm, mode: 'box', start: 2.6, end: 2.0, min: 0.3, occlude: true, large: true });
+  frame.material = frame.material.clone(); // own copy so the gazebo can fade without touching other props
+  ent.frameFader = registerCamFader({ name: 'bell-frame', object: frame, materials: [frame.material], mode: 'box', start: 2.6, end: 2.0, min: 0.3, occlude: true });
   P.col.add({ kind: 'cyl', x: x - 1.6, z, y0: y, y1: y + 4, r: 0.18 });
   P.col.add({ kind: 'cyl', x: x + 1.6, z, y0: y, y1: y + 4, r: 0.18 });
   P.scene.add(frame);

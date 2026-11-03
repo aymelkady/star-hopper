@@ -40,11 +40,14 @@ export const CAM = {
   pullOutRate: 3.5,          // 1/s ease back out after a pull-in (pull-in itself is instant)
   wallLiftStep: 0.12, wallLiftMax: 0.96, // rad: extra pitch searched when a wall is < minDist
   liftInRate: 22, liftOutRate: 2.5,
+  wallSwingTry: [0.5, 1.0, 1.5], wallSwingRoom: 5, wallSwingRate: 2.2, // rad, m, 1/s
+  wallSwingRadius: 0.7,
+  wallSwingIdle: 0.6, wallSwingMaxSpeed: 1.5, // only when no camera input for 0.6 s and Pip ~still
   groundClear: 0.6,          // min height above the ground under the camera
   // large props overhead (the Sky Towers bell)
   underPropMargin: 2.0,      // m around the prop's footprint that counts as "under"
-  underPropBack: 1.5,        // m extra distance
-  underPropMinPitch: 34 * DEG, // pitch floor while under it
+  underPropBack: 2.0,        // m extra distance
+  underPropMinPitch: 42 * DEG, // pitch floor while under it
   underPropRate: 4,
   fadeRate: 12,              // 1/s opacity smoothing
   occMin: 0.3,               // opacity of a mesh that hides Pip
@@ -53,14 +56,16 @@ export const CAM = {
 };
 
 // ---------- faders ----------
-// def: {name, object, start, end, min, mode:'point'|'box', point?(out) -> Vector3, occlude?, large?}
+// def: {name, object, start, end, min, mode:'point'|'box', point?(out) -> Vector3, occlude?, large?,
+//       materials? (default: every material under object)}
 // Opacity is 1 at distance >= start, `min` at distance <= end.
 const faders = [];
 const _box = new THREE.Box3(), _v = new THREE.Vector3(), _hit = new THREE.Vector3(), _ray = new THREE.Ray();
 export function registerCamFader(def) {
   const f = { start: 2.2, end: 1.2, min: 0.35, mode: 'box', ...def, opacity: 1, target: 1, mats: [] };
   const seen = new Set();
-  f.object.traverse(o => {
+  if (def.materials) for (const m of def.materials) { seen.add(m); f.mats.push({ m, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite }); }
+  else f.object.traverse(o => {
     const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of ms) if (!seen.has(m)) { seen.add(m); f.mats.push({ m, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite }); }
   });
@@ -152,7 +157,7 @@ export function createCameraRig(camera, col, getSettings) {
   const rig = {
     yaw: 0, pitch: CAM.pitch, dist: CAM.dist, curDist: CAM.dist,
     idle: 9, focus, mode: 'follow', // 'follow' | 'orbit' (title screen)
-    lift: 0, under: 0, lastBlocked: 1e9, groundClamped: false, actualPitch: CAM.pitch,
+    lift: 0, under: 0, lastBlocked: 1e9, groundClamped: false, actualPitch: CAM.pitch, speed: 0, swingDir: 0,
     faders, camera,
   };
   const occluders = createOccluders();
@@ -176,20 +181,20 @@ export function createCameraRig(camera, col, getSettings) {
   // Desired camera spot for (pitch, dist), lifted to ground clearance; returns the free distance a
   // sphere can travel from the focus toward it (dist * castFraction).
   const spot = new THREE.Vector3();
-  function aim(pitch, dist, out) {
+  function aim(pitch, dist, out, yaw = rig.yaw) {
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
-    out.set(focus.x + Math.sin(rig.yaw) * cp * dist, focus.y + sp * dist, focus.z + Math.cos(rig.yaw) * cp * dist);
+    out.set(focus.x + Math.sin(yaw) * cp * dist, focus.y + sp * dist, focus.z + Math.cos(yaw) * cp * dist);
     if (col) {
       const g = col.groundHeight(out.x, out.z, out.y + CAM.groundClear);
       if (out.y < g + CAM.groundClear) out.y = g + CAM.groundClear;
     }
     return out;
   }
-  function freeDist(pitch, dist) {
-    aim(pitch, dist, spot);
+  function freeDist(pitch, dist, yaw, radius = CAM.pullInRadius) {
+    aim(pitch, dist, spot, yaw);
     const L = spot.distanceTo(focus);
     if (!col) return L;
-    return L * col.castSphere(focus.x, focus.y, focus.z, spot.x, spot.y, spot.z, CAM.pullInRadius);
+    return L * col.castSphere(focus.x, focus.y, focus.z, spot.x, spot.y, spot.z, radius);
   }
 
   // Is Pip standing under (or right beside) a large registered prop?
@@ -215,6 +220,19 @@ export function createCameraRig(camera, col, getSettings) {
     // wall closer than minDist -> search for a higher pitch with room (raise instead of pulling in)
     let targetLift = 0;
     const free0 = freeDist(basePitch, baseDist);
+    // Pip standing still with its back to a wall: swing around to the side that has room (this
+    // turns the real yaw, so the controls keep matching the view; never while Pip is moving)
+    const room = Math.min(CAM.wallSwingRoom, baseDist - 0.05);
+    // (room is tested with a fatter sphere so the swing never stops grazing a corner)
+    if (!instant && rig.idle > CAM.wallSwingIdle && rig.speed < CAM.wallSwingMaxSpeed &&
+      freeDist(basePitch, baseDist, rig.yaw, CAM.wallSwingRadius) < room) {
+      for (const off of CAM.wallSwingTry) {
+        let pick = 0;
+        // keep turning the way we started (no ping-pong between two equally good sides)
+        for (const sgn of rig.swingDir ? [rig.swingDir] : [1, -1]) if (freeDist(basePitch, baseDist, rig.yaw + sgn * off, CAM.wallSwingRadius) >= room) { pick = sgn * off; break; }
+        if (pick) { rig.swingDir = Math.sign(pick); rig.yaw += pick * expK(CAM.wallSwingRate, dt); break; }
+      }
+    } else rig.swingDir = 0;
     if (free0 < Math.min(CAM.minDist, baseDist - 0.05)) {
       let best = 0, bestFree = free0;
       targetLift = CAM.wallLiftMax;
@@ -280,6 +298,7 @@ export function createCameraRig(camera, col, getSettings) {
     rig.mode = 'follow';
     const inv = s.invertY ? -1 : 1, spd = s.cameraSpeed || 1;
     pipPos.copy(renderPos);
+    rig.speed = Math.hypot(ctrl.velocity.x, ctrl.velocity.z);
     let manual = false;
     if (Math.abs(camIn.x) > 0.05 || Math.abs(camIn.y) > 0.05) {
       rig.yaw += camIn.x * CAM.orbitSpeed * spd * dt;
