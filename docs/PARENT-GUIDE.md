@@ -35,21 +35,21 @@ no game-over), and has a built-in break timer.
 - **Save & stop** is in the pause menu. It always saves. Closing the tab also keeps progress.
 
 ## Controls
-| Action | Keyboard | Gamepad |
-|---|---|---|
-| Move | W A S D or arrows | Left stick |
-| Jump (tap again on landing for higher jumps) | Space | A |
-| Long jump (while running) | Shift + Space | B |
-| Ground pound (in the air) | E | X |
-| Camera | Q / E, or drag mouse | Right stick |
-| Focus mode | F | — |
-| Pause / Settings | Esc | Start |
-| Skip current goal | Tab | Back |
+| Action | Touch (iPad / Android) | Keyboard | Gamepad |
+|---|---|---|---|
+| Move | Left thumb: joystick appears where you touch | W A S D or arrows | Left stick |
+| Jump (tap again on landing for higher jumps) | **A** button | Space | A |
+| Long jump (while running) | **B** button | Shift + Space | B |
+| Ground pound (in the air) | **X** button | E | X |
+| Camera | Drag with right thumb | Q / E, or drag mouse | Right stick |
+| Focus mode | Eye icon | F | — |
+| Pause / Settings | ❚❚ icon | Esc | Start |
+| Skip current goal | Quest card → Skip | Tab | Back |
 
 ## Honest limits
 - This is a game, not a treatment. It borrows design ideas from the research on attention and
   games, but it has not been clinically tested.
 - Recommended total screen-game time for this age is still a family decision; most guidance
   points to under an hour on school days. The timer helps you keep to whatever you choose.
-- It runs best in Chrome or Edge on a laptop or Chromebook with a keyboard. Touch screens are not
-  supported in this version.
+- Works on iPad (Safari), Android tablets and phones (Chrome), Chromebooks and laptops. On a tablet,
+  turn it sideways and use **Add to Home Screen** for a full-screen app with no browser bars.

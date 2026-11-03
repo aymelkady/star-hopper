@@ -30,7 +30,7 @@ Design consequences (these are hard requirements, not nice-to-haves):
 | R7 | **Focus mode (toggle F)** | Dims everything except player, path and current objective; disables background animation and ambient particles; lowers music. |
 | R8 | **Break timer** | Visual ring in the corner. Default 20 min; parent-settable 10/15/20/30. Soft warnings at 5 min and 1 min ("2 more stars then break?" style), then a full-screen "Stretch break" card with 3 movement prompts and a 60 s ring. Auto-saves first. Child can always "Save & stop". |
 | R9 | **Readable UI** | Min 20 px text, high contrast, icon + text, no paragraphs ever, pause anytime, nothing times out while reading. |
-| R10 | **Low button count** | Move + Jump + Action + Camera. Gamepad supported. Controls card accessible from pause. |
+| R10 | **Low button count** | Move + Jump + Action + Camera. Touch (iPad/Android), keyboard and gamepad all supported. Controls card accessible from pause. |
 | R11 | **No dark patterns** | No streaks, no daily-login nags, no countdown pressure except the optional "Ghost race" stars. |
 | R12 | **Persistence** | Auto-save to localStorage on every star/checkpoint/settings change. Three save slots. |
 
@@ -95,7 +95,8 @@ Rules for all agents:
 - `window.__game` exposes `{player, state, events, teleport(x,y,z), collect(id)}` for tests only.
 - Everything must run at 60 fps on an integrated GPU: < 300 draw calls, merged static geometry, shadow map ≤ 2048, no post-processing.
 - DOM UI, not canvas text. Font: system sans, min 20 px. Colours tested against WCAG AA.
-- Target: Chrome/Edge/Firefox desktop + Chromebook. Keyboard + gamepad. Touch is out of scope for v1.
+- Target platforms, all first-class: **iPad (Safari 17+), Android phones/tablets (Chrome)**, Chromebook, desktop Chrome/Edge/Firefox. Input: touch, keyboard, gamepad.
+- Mobile rules: `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">`, `touch-action:none` on the canvas and HUD, no pointer lock, no hover-only UI, safe-area insets respected, landscape encouraged (portrait shows a friendly "turn your tablet" card but still works). Pixel ratio capped at 1.5 on mobile and shadow map 1024 on mobile; target 60 fps on a 2020 iPad / mid-range Android, never below 30. AudioContext created/resumed only inside the first touch/click handler (iOS requirement). All controls reachable with two thumbs: left virtual joystick (dynamic origin where the thumb lands), right side buttons Jump / Pound / Long-jump, camera by dragging anywhere on the right half that is not a button. Buttons ≥ 64 px, 12 px apart, semi-transparent, with haptic `navigator.vibrate(10)` where available. Works as an installable web app (manifest + icons inline as data URLs, `apple-mobile-web-app-capable`).
 - No external network calls at runtime. No analytics.
 
 ## 4. Acceptance criteria (the audit checks these)
@@ -108,5 +109,6 @@ A5 Falling off the world returns the player to the last checkpoint within 1 s wi
 A6 Focus mode visibly reduces clutter; break timer warnings fire at 5 min and 1 min; stretch screen appears; Save & stop works.
 A7 All settings persist across reload. Three save slots work.
 A8 Gamepad: left stick move, A jump, B long jump, X ground pound, right stick camera, Start pause.
+A8b Touch: on an iPad-sized and a phone-sized viewport (Playwright device emulation, hasTouch) the virtual joystick moves Pip, the Jump button jumps, the camera drag orbits, buttons never overlap the HUD or the quest card, and the first tap unlocks audio with no console errors.
 A9 No Nintendo IP: no "Mario", "Peach", "Bowser", "Goomba", "Power Star", mushroom-kingdom music, or 1-up sounds.
 A10 README contains a one-page parent guide.
