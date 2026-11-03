@@ -82,6 +82,7 @@ async function desktopGameplay(browser) {
 
   // star (teleport onto it)
   const star = await ev(page, () => window.__game.listPickups().find(p => p.type === 'star' && p.id === 'meadow-1'));
+  const sfxBeforeStar = (await sfx(page)).length;
   await ev(page, s => window.__game.teleport(s.x, s.y - 0.9, s.z), star);
   await page.waitForFunction(() => window.__game.log.some(e => e.type === 'pickup:star'), null, { timeout: 5000 }).catch(() => {});
   const slow = await ev(page, () => window.__game.game.timeScale);
@@ -91,10 +92,17 @@ async function desktopGameplay(browser) {
   ok(slow < 1 && st.slowmos >= 1, `star -> brief slow-mo (timeScale ${slow})`);
   ok(st.flashes >= 1, 'star -> white flash');
   ok((await sfx(page)).includes('star'), 'star fanfare logged');
+  await page.waitForTimeout(300);
+  const starPlays = (await sfx(page)).slice(sfxBeforeStar).filter(n => n === 'star').length;
+  ok(starPlays === 1, `one star pickup -> the star jingle plays exactly once (${starPlays})`);
   await page.waitForTimeout(160);
   await page.screenshot({ path: join(root, 'test/shots/fx-star.png') });
   await page.waitForTimeout(500);
   ok(await ev(page, () => window.__game.game.timeScale) === 1, 'timeScale back to 1 after slow-mo');
+
+  // floating coin label shows the coin's value (Freeze! gift +5, Focus Burst coins +2)
+  const gift = await ev(page, () => { window.__game.world.props.giftCoins(5, 'meadow'); return [...document.querySelectorAll('.fx-label')].map(e => e.textContent); });
+  ok(gift.includes('+5'), `Freeze! coin shower label reads "+5" (${gift.filter(Boolean).join(' ')})`);
 
   // ground pound
   const sh0 = (await fxStats(page)).shakes;

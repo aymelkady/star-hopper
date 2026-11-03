@@ -163,19 +163,24 @@ async function uiChecks(page) {
   ok(await page.evaluate(() => document.getElementById('break-ring').dataset.level === 'red'), 'break ring turns red in the last minute');
   // stretch break
   t = await nowT(page);
-  await page.evaluate(() => window.__game.plugins.breaks.debugSetRemaining(1));
-  await page.waitForSelector('#overlay .stretch', { timeout: 8000 }).catch(() => {});
-  // regression: a stray Enter (or a focused button + Enter) in the first second must not dismiss it
-  const shownAt = await page.evaluate(() => performance.now());
-  await page.keyboard.press('Enter');
-  const autoFocused = await page.evaluate(() => document.activeElement && document.activeElement.id);
-  await page.focus('#btn-break-stop').catch(() => {});
-  await page.keyboard.press('Enter');
-  const guardMs = await page.evaluate(t => Math.round(performance.now() - t), shownAt);
+  // regression: in the first second a keyboard / gamepad activation (click with detail 0, what
+  // Enter / Space / menus.nav confirm produce) is ignored, and nothing is auto-focused
+  const guard = await page.evaluate(() => new Promise(res => {
+    window.__game.plugins.breaks.debugSetRemaining(1);
+    const t1 = performance.now();
+    const k = () => {
+      const b = document.getElementById('btn-break-stop');
+      if (!b) { if (performance.now() - t1 < 8000) requestAnimationFrame(k); else res(null); return; }
+      const focused = document.activeElement && document.activeElement.id;
+      b.click();                                    // synthetic activation, detail 0 (like Enter / pad A)
+      res({ focused, ms: Math.round(performance.now() - t1), still: !!document.querySelector('#overlay .stretch'), mode: window.__game.game.mode });
+    };
+    k();
+  }));
+  await page.keyboard.press('Enter');               // nothing focused: a stray Enter does nothing
   await page.waitForTimeout(100);
-  ok(autoFocused !== 'btn-break-stop' && await page.isVisible('#overlay .stretch') && await mode() === 'paused',
-    `stretch card: nothing auto-focused + Enter in the first 1 s ignored (${guardMs} ms, still on the card)`);
-  await page.blur('#btn-break-stop').catch(() => {});
+  ok(guard && guard.focused !== 'btn-break-stop' && guard.still && guard.mode === 'paused' && await page.isVisible('#overlay .stretch'),
+    `stretch card: nothing auto-focused, Enter / A in the first 1 s ignored (${JSON.stringify(guard)})`);
   ok(await page.isVisible('#overlay .stretch') && await mode() === 'paused', 'stretch break card visible and game paused');
   ok(await logHas(page, 'break:start', t) && await page.evaluate(t => window.__game.log.some(e => e.type === 'save:written' && e.t >= t && e.payload.reason === 'break'), t), 'break:start + auto-save before the break');
   ok(!(await page.isVisible('#btn-break-play')) && await page.isVisible('#btn-break-stop'), 'only "Save & stop" during the 60 s');
