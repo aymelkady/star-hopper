@@ -13,6 +13,7 @@ import { createPip } from './player/pip.js';
 import { createWorld } from './world/world.js';
 import { createHud } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
+import { initPlugins } from './plugins.js';
 
 const STEP = 1 / 60, MAX_FRAME = 0.05, FADE_HALF = 0.2; // 0.4 s respawn fade (R5)
 
@@ -59,6 +60,11 @@ const menus = createMenus({
   onPlay: slot => startGame(slot),
   onResume: () => resume(),
   onSaveStop: () => saveAndStop(),
+});
+const plugins = initPlugins({
+  THREE, scene, camera, renderer, webgl, events, state, world, ctrl, pip, rig, hud, menus, game, input, touch,
+  isTouch: IS_TOUCH,
+  api: { pause, resume, saveAndStop, startGame, beginRespawn: reason => beginRespawn(reason) },
 });
 menus.showTitle(webgl ? '' : '3D graphics are not available on this device.');
 
@@ -244,7 +250,7 @@ function installManifest() {
 // ---------- test / debug hooks ----------
 window.__game = {
   ready: false, webgl, player: ctrl, controller: ctrl, state, events, log: events.log, world, camera: rig,
-  renderer, scene, input, touch, hud, menus, TUNING, game,
+  renderer, scene, input, touch, hud, menus, TUNING, game, plugins,
   teleport(x, y, z) { ctrl.teleport(x, y, z); rig.snap(ctrl.position, ctrl.facing); return true; },
   collect(id) {
     const p = world.findPickup(id); if (!p) return false;
