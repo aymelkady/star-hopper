@@ -1,7 +1,8 @@
 /*
  * Break timer (R8, A6).  Counts play time only while game.mode === 'playing' (never on the title,
  * in the pause menu or on a break card).  Length = settings.breakMinutes (10/15/20/30, 0 = off).
- *  - HUD ring (SVG): bottom-left on desktop, top-left under the chips on touch devices.
+ *  - HUD ring (SVG): bottom-left.  Compact HUD (body.hud-compact, DESIGN.md §5.4): a 32 px ring with
+ *    no text until the 5-minute warning (data-level amber / red), then it shows the minutes.
  *  - 5 min / 1 min left: toast + ui:warn {minutes} + ring colour green -> amber -> red.
  *  - 0: save('break'), pause, full-screen Stretch Break card (locked: Esc cannot skip it) with a
  *    60 s ring and 3 movement prompts (different set each break).  Before 60 s: only "Save & stop".
@@ -30,10 +31,10 @@ export function init(ctx) {
 
   // ---- HUD ring ----
   const ring = document.createElement('div');
-  ring.id = 'break-ring'; ring.className = `chip break-ring ${isTouch ? 'touch' : 'desk'}`;
+  ring.id = 'break-ring'; ring.className = `chip break-ring desk${isTouch ? ' touch' : ''}`;
   ring.setAttribute('role', 'timer'); ring.setAttribute('aria-label', 'Time left');
   ring.innerHTML = ringSvg('ring', 'min');
-  if (isTouch) document.querySelector('#hud .hud-left').appendChild(ring); else document.getElementById('hud').appendChild(ring);
+  document.getElementById('hud').appendChild(ring); // bottom-left everywhere (the left column stays short)
   const rf = ring.querySelector('.rf'), num = ring.querySelector('.ring-num');
   let lastDraw = '';
 

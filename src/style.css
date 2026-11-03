@@ -304,3 +304,87 @@ html.reduce-motion #toast, html.reduce-motion .qc-bar i, html.reduce-motion .rin
 }
 @media (prefers-reduced-motion: reduce) { .fm.flash, .fp-card, .fp-count.pop, .fp-freeze, .fp-chip.pop { animation: none; } }
 html.reduce-motion .fm.flash, html.reduce-motion .fp-card, html.reduce-motion .fp-count.pop, html.reduce-motion .fp-freeze, html.reduce-motion .fp-chip.pop { animation: none; }
+
+/* ---------- compact HUD (DESIGN.md §5.4): phones / tablets / small windows ----------
+ * body.hud-compact is set by ui/hud.js when IS_TOUCH || innerWidth <= 900 || innerHeight <= 500.
+ * Permanent: one-line quest card (+ 28 px sun on its left edge) and the star chip.  Pause / focus
+ * icons 44 px at 70 % opacity.  Break ring 32 px bottom-left, text only from the 5-minute warning.
+ * Everything else peeks (.peek, 2.5 s) when it changes.  Desktop keeps the full HUD above. */
+#hud-count { display: none; }
+body.hud-compact { --qc-top: calc(8px + var(--safe-t)); --qc-h: 44px; }
+body.hud-compact .hud-left { top: calc(8px + var(--safe-t)); left: calc(8px + var(--safe-l)); gap: 6px; }
+body.hud-compact .chip { min-height: 34px; padding: 2px 12px 2px 8px; gap: 6px; font-size: 20px; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+body.hud-compact .chip .ico { width: 22px; height: 22px; font-size: 20px; }
+body.hud-compact .chip.zone { padding-left: 14px; }
+body.hud-compact .hud-left > .chip:not(#hud-stars):not(#hud-timer):not(.peek) { display: none; }
+body.hud-compact #hud-count.peek { display: inline-flex; }
+body.hud-compact #hud-zone { position: fixed; left: 50%; top: calc(var(--qc-top) + var(--qc-h) + 8px); transform: translateX(-50%); white-space: nowrap; }
+body.hud-compact:has(#quest-card.qc-intro:not([hidden])) #hud-zone { display: none; } /* never over the quest intro */
+body.hud-compact .hud-left > .chip.peek { animation: hud-peek 2.5s ease-out both; }
+body.hud-compact #hud-zone.peek { animation-name: hud-peek-c; }
+@keyframes hud-peek { 0% { opacity: 0; transform: translateX(-14px); } 10%, 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@keyframes hud-peek-c { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
+body.hud-compact .hud-right { top: calc(8px + var(--safe-t)); right: calc(8px + var(--safe-r)); gap: 8px; }
+body.hud-compact .icon-btn { width: 44px; height: 44px; border-width: 2px; opacity: .7; transition: opacity .15s; }
+body.hud-compact .icon-btn:active, body.hud-compact .icon-btn:focus-visible, body.hud-compact #btn-focus.active { opacity: 1; }
+body.hud-compact .icon-btn svg { width: 22px; height: 22px; }
+body.hud-compact #toast { top: calc(var(--qc-top) + var(--qc-h) + 50px); bottom: auto; transform: translateX(-50%) translateY(-10px);
+  font-size: 22px; padding: 6px 16px; border-width: 3px; border-radius: 14px; }
+body.hud-compact #toast.show { transform: translateX(-50%) translateY(0); }
+/* break ring */
+body.hud-compact .break-ring { left: calc(8px + var(--safe-l)); bottom: calc(8px + var(--safe-b)); min-height: 32px; height: 32px; padding: 0; gap: 4px;
+  background: rgba(24, 18, 46, .55); box-shadow: none; }
+body.hud-compact .break-ring .ring { width: 32px; height: 32px; }
+body.hud-compact .break-ring:not([data-level="amber"]):not([data-level="red"]) :is(.ring-num, .ring-lbl) { display: none; }
+body.hud-compact .break-ring:is([data-level="amber"], [data-level="red"]) { padding-right: 12px; }
+/* quest card: one line, 3 px progress underline, distance as text, Skip as a chevron */
+body.hud-compact #quest-card { top: var(--qc-top); max-width: min(560px, 60vw); }
+body.hud-compact #quest-card > div { border-width: 3px; border-radius: 16px; box-shadow: 0 3px 0 rgba(0,0,0,.25); }
+body.hud-compact .qc-obj { position: relative; flex-direction: row; align-items: center; gap: 8px; height: var(--qc-h); padding: 0 0 0 10px; }
+body.hud-compact .qc-main { flex: 1 1 auto; min-width: 0; gap: 6px; justify-content: flex-start; }
+body.hud-compact .qc-ico { font-size: 22px; }
+body.hud-compact .qc-text { font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+body.hud-compact .qc-sub { display: contents; }
+body.hud-compact .qc-bar { position: absolute; left: 10px; right: 10px; bottom: 3px; height: 3px; min-width: 0; border: 0; border-radius: 2px; background: rgba(29, 21, 48, .14); }
+body.hud-compact .qc-dist { flex: none; padding: 0; background: none; color: #5a4a6a; font-size: 20px; font-weight: 800; }
+body.hud-compact .qc-dist:empty { display: none; }
+body.hud-compact .qc-dots { display: none; }
+body.hud-compact .qc-skip { flex: none; display: grid; place-items: center; margin: -3px 0; min-width: 44px; width: 44px; min-height: 44px; height: 44px; padding: 0;
+  border: 0; border-radius: 12px; background: transparent; box-shadow: none; font-size: 0; }
+body.hud-compact .qc-skip[hidden] { display: none; }
+body.hud-compact .qc-skip::after { content: '›'; font: 900 30px/1 var(--font); color: #6a5a7a; margin-top: -3px; }
+body.hud-compact .qc-skip.armed { background: var(--gold); }
+body.hud-compact .qc-skip.armed::after { content: '✓'; font-size: 22px; color: var(--ink); margin-top: 0; }
+body.hud-compact .qc-skip:active { transform: none; box-shadow: none; }
+body.hud-compact #quest-card > .qc-cele { padding: 6px 18px; }
+body.hud-compact .qc-cele-big { font-size: 22px; }
+body.hud-compact .qc-cele-sub { display: none; }
+body.hud-compact #quest-card > .qc-intro { padding: 8px 14px 6px; }
+body.hud-compact .qc-intro-h { font-size: 22px; }
+body.hud-compact .qc-rows li { font-size: 20px; padding: 2px 8px; }
+/* Focus Meter: a 28 px sun on the card's left edge; the fill rises inside the sun itself */
+body.hud-compact .fm { width: 32px; height: 32px; right: calc(100% + 3px); }
+body.hud-compact .fm.below { right: auto; left: 0; top: calc(100% + 6px); }
+body.hud-compact .fm-ring { border-width: 2px; background: var(--paper); box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+body.hud-compact .fm-sun { inset: 2px; border: 0; background: linear-gradient(to top, #ffb020 calc(var(--v) * 1%), #fff3c8 0); }
+body.hud-compact .fm-sun::before { transform: translate(-6px, -3px); } body.hud-compact .fm-sun::after { transform: translate(1px, -3px); }
+body.hud-compact .fm-sun::before, body.hud-compact .fm-sun::after { width: 4px; height: 4px; }
+body.hud-compact .fm.full .fm-ring { box-shadow: 0 0 0 3px rgba(255,216,74,.7), 0 0 12px 4px rgba(255,200,40,.75); }
+/* challenge chip takes the quest card's slot (same top, height and at least its width) */
+body.hud-compact .fp-chip { top: var(--qc-top); bottom: auto; height: var(--qc-h); display: flex; align-items: center; justify-content: center; max-width: 60vw;
+  padding: 0 16px; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); border-radius: 16px; font-size: 22px; box-shadow: 0 3px 0 rgba(0,0,0,.25); }
+@media (max-height: 500px) {
+  body.hud-compact .qc-text, body.hud-compact .qc-ico, body.hud-compact .qc-cele-big, body.hud-compact .fp-chip { font-size: 20px; }
+}
+@media (max-width: 600px) { /* portrait phone: the card drops under the corner icons, full width */
+  body.hud-compact { --qc-top: calc(60px + var(--safe-t)); }
+  body.hud-compact #quest-card { left: 50%; right: auto; transform: translateX(-50%); max-width: calc(100vw - 64px); }
+  body.hud-compact .fp-chip { max-width: calc(100vw - 64px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.hud-compact .hud-left > .chip.peek { animation: none; }
+  body.hud-compact .icon-btn { transition: none; }
+}
+html.reduce-motion body.hud-compact .hud-left > .chip.peek { animation: none; }
+body.hud-compact .fp-chip.pop { animation-name: fp-chip-pop; } /* keep the centring translate while it pops */
+@keyframes fp-chip-pop { 0% { transform: translateX(-50%) scale(1); } 40% { transform: translateX(-50%) scale(1.08); } 100% { transform: translateX(-50%) scale(1); } }

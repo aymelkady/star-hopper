@@ -47,6 +47,13 @@ async function desktopPass(browser) {
   ok(await page.isVisible('#hud'), 'HUD visible');
   ok(await page.isVisible('#btn-pause') && await page.isVisible('#btn-focus'), 'on-screen pause + focus buttons visible');
   await page.waitForTimeout(300);
+  // §5.4: the desktop keeps the full HUD (no compact mode, every chip + the break-ring text on screen)
+  const desk = await page.evaluate(() => ({
+    compact: document.body.classList.contains('hud-compact'),
+    chips: ['hud-stars', 'hud-coins', 'hud-zone', 'break-ring'].filter(id => { const e = document.getElementById(id); return !(e && e.offsetParent && getComputedStyle(e).opacity === '1'); }),
+    ring: !!document.querySelector('#break-ring .ring-num').offsetParent,
+  }));
+  ok(!desk.compact && desk.chips.length === 0 && desk.ring, `desktop 1280x720: full HUD (no hud-compact, chips visible${desk.chips.length ? ', missing ' + desk.chips : ''}, ring text ${desk.ring})`);
   const qcText = (await page.textContent('#quest-card')).replace(/\s+/g, ' ').trim();
   ok(await page.isVisible('#quest-card') && qcText.length > 3, `quest card visible after start ("${qcText.slice(0, 60)}")`);
   ok(await page.evaluate(() => window.__game.plugins.objectives.introsShown === 1 && window.__game.plugins.objectives.quest().stars.length === 3), "Today's quest (3 stars) card shown on start");
@@ -336,10 +343,83 @@ async function questCardLayout(page, name, viewport) {
   await page.waitForTimeout(200);
   const ov2 = await qcOverlap();
   ok(await page.isVisible('#quest-card .qc-obj') && ov2.length === 0, `quest card (objective look) does not overlap HUD chips / touch controls ${ov2.join(',')}`);
-  ok(await page.evaluate(() => { const r = document.getElementById('break-ring'); return !!r.offsetParent && r.parentElement.classList.contains('hud-left'); }), 'break ring sits top-left under the chips on touch');
+  const ring = await page.evaluate(() => { const r = document.getElementById('break-ring'), b = r.getBoundingClientRect(); return { vis: !!r.offsetParent, x: b.left, y: b.bottom, w: b.width, h: b.height, txt: !!r.querySelector('.ring-num').offsetParent }; });
+  ok(ring.vis && ring.x < 40 && ring.y > viewport.height - 40 && ring.w <= 34 && ring.h <= 34 && !ring.txt, `compact HUD: break ring is a ${Math.round(ring.w)} px ring bottom-left with no text (${JSON.stringify(ring)})`);
   const qbb = await page.locator('#quest-card').boundingBox();
   ok(qbb && qbb.x >= 0 && qbb.x + qbb.width <= viewport.width && qbb.y >= 0, `quest card fits the screen (${qbb ? Math.round(qbb.width) : 0} px wide)`);
   await page.screenshot({ path: join(root, `test/shots/quest-${name}.png`) });
+}
+
+// §5.4 compact HUD: union of all visible HUD boxes <= 12 % of the screen, nothing in the central
+// 60 % of the width below the top 60 px, nothing in the bottom 45 % except the break ring.
+const hudBoxes = page => page.evaluate(() => {
+  const vis = e => { // rendered, not transparent (opacity through the ancestors), not visibility:hidden
+    if (!e.getClientRects().length) return false;
+    const cs = getComputedStyle(e); if (cs.visibility !== 'visible') return false;
+    for (let n = e; n && n !== document.body; n = n.parentElement) if (+getComputedStyle(n).opacity < 0.05) return false;
+    return true;
+  };
+  const skip = new Set(['hud', 'fp-layer']);
+  const els = [...document.querySelectorAll('#hud *, #quest-card, #quest-card *, #toast, #fp-layer *, #rotate-hint')]
+    .filter(e => !skip.has(e.id) && !e.classList.contains('hud-left') && !e.classList.contains('hud-right') && !(e.closest('svg') && e.tagName !== 'svg') && vis(e));
+  return els.map(e => { const r = e.getBoundingClientRect(); return { id: e.id || e.className.baseVal || e.className || e.tagName, l: r.left, t: r.top, r: r.right, b: r.bottom, ring: !!e.closest('#break-ring') }; })
+    .filter(b => b.r > b.l && b.b > b.t);
+});
+function unionArea(boxes, W, H) { // exact area of a union of rectangles (coordinate compression)
+  const cl = b => ({ l: Math.max(0, b.l), t: Math.max(0, b.t), r: Math.min(W, b.r), b: Math.min(H, b.b) });
+  const bs = boxes.map(cl).filter(b => b.r > b.l && b.b > b.t);
+  const xs = [...new Set(bs.flatMap(b => [b.l, b.r]))].sort((a, b) => a - b);
+  let area = 0;
+  for (let i = 0; i < xs.length - 1; i++) {
+    const x0 = xs[i], x1 = xs[i + 1], iv = bs.filter(b => b.l <= x0 && b.r >= x1).map(b => [b.t, b.b]).sort((a, b) => a[0] - b[0]);
+    let len = 0, cs = -1, ce = -1;
+    for (const [a, c] of iv) { if (a > ce) { if (ce > cs) len += ce - cs; cs = a; ce = c; } else ce = Math.max(ce, c); }
+    if (ce > cs) len += ce - cs;
+    area += len * (x1 - x0);
+  }
+  return area;
+}
+const footprints = {};
+async function hudFootprint(page, name, viewport) {
+  const W = viewport.width, H = viewport.height;
+  ok(await page.evaluate(() => document.body.classList.contains('hud-compact')), `${name}: compact HUD active (body.hud-compact)`);
+  // at rest: >= 2.5 s after start with nothing changing (any peek / toast has faded)
+  await page.waitForFunction(() => !document.querySelector('#hud .peek') && !document.querySelector('#toast.show') && document.querySelector('#quest-card').className === 'qc-objective', null, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const boxes = await hudBoxes(page);
+  const area = unionArea(boxes, W, H), pct = 100 * area / (W * H);
+  footprints[name] = +pct.toFixed(2);
+  ok(pct <= 12, `${name}: HUD footprint at rest ${pct.toFixed(2)} % of the screen (<= 12 %)`);
+  const centre = boxes.filter(b => b.r > W * 0.2 && b.l < W * 0.8 && b.b > 60);
+  ok(centre.length === 0, `${name}: nothing in x 20-80 % below the top 60 px${centre.length ? ' (' + centre.map(b => `${b.id}@${Math.round(b.l)},${Math.round(b.t)}`).join(' ') + ')' : ''}`);
+  const low = boxes.filter(b => b.b > H * 0.55 && !b.ring);
+  ok(low.length === 0, `${name}: nothing in the bottom 45 % except the break ring${low.length ? ' (' + low.map(b => b.id).join(' ') + ')' : ''}`);
+  const persistent = await page.evaluate(() => [...document.querySelectorAll('.hud-left > *')].filter(e => e.offsetParent && getComputedStyle(e).opacity !== '0').map(e => e.id));
+  ok(persistent.join() === 'hud-stars', `${name}: only the star chip stays on the left (${persistent.join(',')})`);
+  const sizes = await page.evaluate(() => {
+    const r = id => document.getElementById(id).getBoundingClientRect();
+    const skip = r('btn-skip'), fm = r('focus-meter'), qc = document.querySelector('#quest-card > .qc-obj').getBoundingClientRect();
+    return { btn: [r('btn-pause').width, r('btn-focus').width], op: getComputedStyle(document.getElementById('btn-pause')).opacity,
+      skip: [skip.width, skip.height], fm: fm.width, fmGap: qc.left - fm.right, fmMid: Math.abs((fm.top + fm.bottom) / 2 - (qc.top + qc.bottom) / 2),
+      qcW: qc.width, qcH: qc.height, font: parseFloat(getComputedStyle(document.querySelector('#quest-card .qc-text')).fontSize) };
+  });
+  ok(sizes.btn.every(w => w === 44) && sizes.op === '0.7', `${name}: pause + focus icons 44 px at 70 % opacity (${sizes.btn}, ${sizes.op})`);
+  ok(sizes.skip[0] >= 44 && sizes.skip[1] >= 44, `${name}: Skip chevron tap target >= 44 px (${sizes.skip.map(Math.round)})`);
+  ok(sizes.fm <= 34 && sizes.fmGap >= 0 && sizes.fmGap <= 6 && sizes.fmMid <= 2, `${name}: focus sun ${sizes.fm} px attached to the card's left edge (gap ${sizes.fmGap.toFixed(1)} px)`);
+  ok(sizes.qcH <= 48 && sizes.font >= 20, `${name}: quest card is one line (${Math.round(sizes.qcH)} px tall, ${sizes.font} px text)`);
+  if (H <= 500) ok(sizes.qcW <= W * 0.6 + 1 && sizes.font === 20, `${name}: phone card <= 60 % wide (${Math.round(sizes.qcW)} px) with 20 px text`);
+  // a change peeks for 2.5 s, then fades: collect a coin, then enter a zone
+  await page.evaluate(() => { const c = window.__game.listPickups().find(p => p.type === 'coin'); window.__game.collect(c.id); });
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => { const e = document.getElementById('hud-coins'); return e.classList.contains('peek') && !!e.offsetParent; }), `${name}: coin chip slides in on a pickup`);
+  await page.evaluate(() => window.__game.events.emit('zone:enter', { zone: 'hub', name: 'Treehouse Hub' }));
+  await page.waitForTimeout(400);
+  const zb = await page.evaluate(() => { const z = document.getElementById('hud-zone'), q = document.querySelector('#quest-card > .qc-obj').getBoundingClientRect(), b = z.getBoundingClientRect();
+    return { vis: z.classList.contains('peek') && z.getClientRects().length > 0, below: b.top >= q.bottom, cx: Math.abs((b.left + b.right) / 2 - innerWidth / 2), h: b.height }; });
+  ok(zb.vis && zb.below && zb.cx < 2 && zb.h <= 40, `${name}: zone name is a one-line banner under the quest card (${JSON.stringify(zb)})`);
+  await page.waitForTimeout(2500);
+  ok(await page.evaluate(() => !document.querySelector('#hud .peek') && !document.getElementById('hud-coins').offsetParent && !document.getElementById('hud-zone').getClientRects().length), `${name}: coin chip + zone banner gone after 2.5 s`);
+  await page.screenshot({ path: join(root, `test/shots/hud-${name}.png`) });
 }
 
 async function touchPass(browser, name, viewport) {
@@ -378,6 +458,7 @@ async function touchPass(browser, name, viewport) {
   await wait(150);
   ok(!await page.isVisible('#gs-tutorial'), 'tutorial dismissed by a tap');
   await questCardLayout(page, name, viewport);
+  await hudFootprint(page, name, viewport);
   await grounded(); await wait(200);
 
   // drag left = move
@@ -436,10 +517,10 @@ async function touchPass(browser, name, viewport) {
 
   // Skip › on touch: first tap only arms it ("Skip? ✓"), a second tap within 2 s skips
   const g0 = await page.evaluate(() => window.__game.plugins.objectives.current());
-  await page.tap('#btn-skip');
+  await page.tap('#btn-skip', { force: true }); // force: skip the actionability wait (2 s arm window vs. slow software GL)
   const armed = await page.evaluate(() => ({ cur: window.__game.plugins.objectives.current(), txt: document.getElementById('btn-skip').textContent }));
   ok(armed.cur === g0 && armed.txt === 'Skip? ✓', `touch Skip: first tap arms it ("${armed.txt}", goal unchanged)`);
-  await page.tap('#btn-skip');
+  await page.tap('#btn-skip', { force: true }); // force: skip the actionability wait (2 s arm window vs. slow software GL)
   await wait(100);
   ok(await page.evaluate(g => window.__game.plugins.objectives.current() !== g && document.getElementById('btn-skip').textContent === 'Skip ›', g0), 'touch Skip: second tap within 2 s skips');
 
@@ -476,6 +557,19 @@ async function touchPass(browser, name, viewport) {
     await page.tap('#btn-settings-back');
     ok(await page.isVisible('#btn-resume'), 'iPad: tap on Back returns to the pause menu');
   }
+  if (name === 'phone') { // §5.4: a running challenge's chip takes the quest card's exact slot (nothing jumps)
+    await page.evaluate(() => { if (window.__game.game.mode !== 'playing') window.__game.resume(); });
+    await page.waitForTimeout(200);
+    const slot = await page.evaluate(() => new Promise(res => {
+      const g = window.__game, fp = g.plugins.focusplay, box = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); };
+      const card = box(document.querySelector('#quest-card > .qc-obj'));
+      const c = fp.challenges().find(x => x.starId === 'focus-gem-meadow');
+      g.teleport(c.pad.x, c.pad.y + 0.5, c.pad.z); fp.debugStart('gem', 'meadow');
+      setTimeout(() => { const chip = box(document.getElementById('fp-chip')); fp.debugClose(); res({ card, chip }); }, 600);
+    }));
+    const same = slot.chip.every((v, i) => Math.abs(v - slot.card[i]) <= 2);
+    ok(same, `phone: challenge chip sits in the quest card's slot (card ${slot.card}, chip ${slot.chip})`);
+  }
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
   await context.close();
 }
@@ -500,5 +594,6 @@ try {
 } finally {
   await browser.close();
 }
+if (Object.keys(footprints).length) console.log('HUD footprint at rest (% of screen):', JSON.stringify(footprints));
 console.log(failures ? `\nFAILED (${failures} problem${failures > 1 ? 's' : ''})` : '\nALL SMOKE CHECKS PASSED');
 process.exit(failures ? 1 : 0);

@@ -4,7 +4,8 @@
  *    fills 0..100; .dim while it drains (never red, never a message); .flash on a hit; .full glow.
  *    If the card is so wide that the sun would touch a HUD chip, it docks under the card instead.
  *  - #fp-layer (pointer-events: none except buttons): rule card, 3-2-1 count, result card,
- *    Freeze! card with a 2 s ring, and a small challenge progress chip (bottom centre).
+ *    Freeze! card with a 2 s ring, and a small challenge progress chip (bottom centre; in the
+ *    compact HUD it takes the quest card's slot: same top / height, at least the card's width).
  * Every line is <= 6 words and >= 20 px.  Buttons are >= 56 px tall and stop pointer events so
  * the touch layer underneath never sees them (no accidental jumps).
  */
@@ -91,8 +92,12 @@ export function createFocusUI() {
     ring.style.strokeDashoffset = `${RING_C * (1 - Math.max(0, Math.min(1, progress)))}`;
   }
   function setChip(text) {
-    if (!text) { chip.hidden = true; return; }
+    if (!text) { chip.hidden = true; chip.style.minWidth = ''; return; }
     if (chip.textContent !== text) { chip.textContent = text; retrigger(chip, 'pop'); }
+    if (chip.hidden) { // compact HUD: occupy the (now blank) quest card's box so nothing jumps
+      const card = qc && document.body.classList.contains('hud-compact') && qc.querySelector(':scope > div:not([hidden])');
+      chip.style.minWidth = card ? `${Math.round(card.getBoundingClientRect().width)}px` : '';
+    }
     chip.hidden = false;
   }
 
