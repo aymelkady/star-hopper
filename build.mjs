@@ -22,3 +22,12 @@ const out = join(root, 'dist/star-hopper.html');
 writeFileSync(out, html);
 const kb = (statSync(out).size / 1024).toFixed(0);
 console.log(`built dist/star-hopper.html (${kb} KB)`);
+
+// Artifact variant: claude.ai Artifacts wrap the file in their own <!doctype html><head><body>
+// skeleton, so emit head content + body content without the outer tags.
+const head = html.match(/<head>([\s\S]*?)<\/head>/)[1].replace(/<meta charset="utf-8">\s*/i, '').replace(/<title>Star Hopper<\/title>\s*/i, '');
+const body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
+const artifact = `<title>Star Hopper</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n${head}\n${body}`;
+const outA = join(root, 'dist/star-hopper.artifact.html');
+writeFileSync(outA, artifact);
+console.log(`built dist/star-hopper.artifact.html (${(statSync(outA).size / 1024).toFixed(0)} KB)`);
