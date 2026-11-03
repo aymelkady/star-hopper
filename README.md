@@ -11,14 +11,14 @@ Works on desktop (keyboard or gamepad), iPad (Safari) and Android (Chrome) with 
 
 | Action | Keyboard | Gamepad | Touch |
 |---|---|---|---|
-| Move | `W A S D` (or arrow keys) | Left stick / d-pad | Left thumb: the stick appears where you touch |
-| Jump (hold = higher, 3 in a row = triple jump) | `Space` | A | Green **Jump** button |
-| Long jump (while running) | `Shift` + `Space` | B | Red **Long** button |
-| Ground pound (in the air) | `E`, `X`, `C` or `Ctrl` | X | Blue **Pound** button |
-| Camera | `Q` / `E`, arrow keys (when WASD moves), mouse drag | Right stick | Drag on the right half |
+| Move | `W A S D` (or arrow keys) | Left stick / d-pad | Drag on the left half |
+| Jump (hold = higher, 3 in a row = triple jump) | `Space` | A | Tap the right half |
+| Long jump (while running) | `Shift` + `Space` | B | Swipe sideways |
+| Ground pound (in the air) | `E`, `X`, `C` or `Ctrl` | X | Swipe down |
+| Camera | `Q` / `E`, arrow keys (when WASD moves), mouse drag | Right stick | Slow drag on the right half |
 | Camera behind Pip | `R` | Y | |
 | Focus mode | `F` | View / Back | Eye button (top right) |
-| Pause / Settings | `Esc` or `P` | Start | Pause button (top right) |
+| Pause / Settings | `Esc` or `P` | Start | Pause button (top right) or two-finger tap |
 | Skip current goal | `Tab` | Pause menu → Skip goal | **Skip ›** on the quest card |
 
 Wall kick: touch a wall in the air and press Jump.
@@ -97,13 +97,13 @@ no game-over), and has a built-in break timer.
 ### Controls
 | Action | Touch (iPad / Android) | Keyboard | Gamepad |
 |---|---|---|---|
-| Move | Left thumb: joystick appears where you touch | W A S D or arrows | Left stick |
-| Jump (tap again on landing for higher jumps) | **A** button | Space | A |
-| Long jump (while running) | **B** button | Shift + Space | B |
-| Ground pound (in the air) | **X** button | E | X |
-| Camera | Drag with right thumb | Q / E, or drag mouse | Right stick |
+| Move | Drag on the left side | W A S D or arrows | Left stick |
+| Jump (tap again on landing for higher jumps) | Tap the right side | Space | A |
+| Long jump (while running) | Swipe sideways | Shift + Space | B |
+| Ground pound (in the air) | Swipe down | E | X |
+| Camera | Slow drag on the right side | Q / E, or drag mouse | Right stick |
 | Focus mode | Eye icon | F | Back / View |
-| Pause / Settings | ❚❚ icon | Esc | Start |
+| Pause / Settings | ❚❚ icon or two-finger tap | Esc | Start |
 | Skip current goal | Quest card → Skip | Tab | Pause menu → Skip goal |
 
 ### Honest limits

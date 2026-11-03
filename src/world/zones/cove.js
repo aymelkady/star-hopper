@@ -119,9 +119,9 @@ export function build({ THREE, sb, P, extra, ground: g }) {
     for (let k = 0; k < 5; k++) { const a = k * 1.2566 + x; sb.geo(new THREE.ConeGeometry(0.09, 0.32, 3), x + Math.cos(a) * 0.14, y + 0.04, z + Math.sin(a) * 0.14, c, { yaw: -a, roll: Math.PI / 2, sy: 1, sz: 0.4, jitter: 0 }); }
   }
   // distant layered sandstone sea stacks + arches (decor, out in the sea)
-  for (const [x, z, r, h] of [[118, -70, 9, 26], [132, -20, 7, 18], [126, 40, 10, 30], [112, 88, 8, 20], [150, 10, 6, 14], [104, -110, 7, 22]]) {
-    const n = Math.ceil((h + 8) / 2.4), topY = -8 + n * 2.4;
-    for (let k = 0; k < n; k++) sb.cyl(x, -8 + k * 2.4, z, r * (1 - k * 0.012), 2.4, ROCKS[k % 4], { seg: 8, collide: false, jitter: 0.04 });
+  for (const [x, z, r, h] of [[118, -70, 9, 26], [132, -20, 7, 18], [126, 40, 10, 30], [112, 88, 8, 20], [150, 10, 6, 14], [104, -116, 9, 22], [54, -108, 11, 16], [74, -112, 10, 24], [92, -106, 8, 12], [138, -112, 12, 30], [52, -126, 9, 30], [64, -150, 12, 38]]) {
+    const y0 = z < -100 ? -40 : -8, n = Math.ceil((h - y0) / 2.4), topY = y0 + n * 2.4;
+    for (let k = 0; k < n; k++) sb.cyl(x, y0 + k * 2.4, z, r * (1 - k * 0.012), 2.4, ROCKS[k % 4], { seg: 8, collide: false, jitter: 0.04 });
     sb.cyl(x, topY - 0.3, z, r * (1 - n * 0.012) + 0.15, 0.6, PAL.grass, { seg: 8, collide: false });
     sb.sphere(x + r * 0.3, topY + 0.4, z, r * 0.45, PAL.bush, { detail: 1, sy: 0.6, shade: { under: 0.4 } });
   }

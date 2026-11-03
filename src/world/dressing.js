@@ -7,7 +7,7 @@
  */
 import * as THREE from '../three.js';
 import { StaticBuilder, rand } from './builder.js';
-import { PAL } from './palette.js';
+import { PAL, TUFT_TINTS } from './palette.js';
 import { zoneAt, terrainHeight, pathDist, sandAmount } from './terrain.js';
 
 function merge(parts) { // [{geo, color}] -> vertex-coloured BufferGeometry
@@ -61,7 +61,7 @@ export function dressWorld({ scene, col, P, material, mobile }) {
   // ---- grass tufts ----
   const blades = [];
   for (let k = 0; k < 3; k++) {
-    const g = new THREE.ConeGeometry(0.09, 0.62, 3); g.translate(0, 0.31, 0);
+    const g = new THREE.ConeGeometry(0.09, 0.62, 3, 1, true); g.translate(0, 0.31, 0);
     g.rotateZ((k - 1) * 0.35); g.rotateY(k * 2.1); g.translate((k - 1) * 0.08, 0, (k % 2) * 0.06);
     blades.push({ geo: g, color: PAL.grassLo, tip: PAL.grassHi, h: 0.62 });
   }
@@ -71,13 +71,13 @@ export function dressWorld({ scene, col, P, material, mobile }) {
   // ---- flowers: petals (instance colour) + centre/stem (vertex colour) ----
   const petals = [];
   for (let k = 0; k < 5; k++) {
-    const a = k * 1.2566, g = new THREE.IcosahedronGeometry(0.1, 0);
+    const a = k * 1.2566, g = new THREE.OctahedronGeometry(0.1, 0);
     g.scale(1.3, 0.45, 0.8); g.rotateY(-a); g.translate(Math.cos(a) * 0.11, 0.42, Math.sin(a) * 0.11);
     petals.push({ geo: g, color: PAL.white });
   }
-  const centre = new THREE.IcosahedronGeometry(0.07, 0); centre.translate(0, 0.45, 0);
-  const stem = new THREE.CylinderGeometry(0.018, 0.024, 0.42, 4); stem.translate(0, 0.21, 0);
-  const leafG = new THREE.IcosahedronGeometry(0.07, 0); leafG.scale(1.6, 0.3, 0.7); leafG.translate(0.08, 0.14, 0);
+  const centre = new THREE.OctahedronGeometry(0.07, 0); centre.translate(0, 0.45, 0);
+  const stem = new THREE.CylinderGeometry(0.018, 0.024, 0.42, 3, 1, true); stem.translate(0, 0.21, 0);
+  const leafG = new THREE.OctahedronGeometry(0.07, 0); leafG.scale(1.6, 0.3, 0.7); leafG.translate(0.08, 0.14, 0);
   const NF = mobile ? 320 : 400;
   const petalMat = material.clone(); petalMat.name = 'flower-petals';
   const petalMesh = new THREE.InstancedMesh(merge(petals), petalMat, NF);
@@ -86,7 +86,7 @@ export function dressWorld({ scene, col, P, material, mobile }) {
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color(), up = new THREE.Vector3(0, 1, 0);
   const flowerCols = [PAL.flowerPink, PAL.flowerYellow, PAL.flowerWhite, PAL.flowerPurple];
-  const tuftTints = [0xffffff, 0xf0fff0, 0xe8ffd8, 0xfff8e0].map(h => new THREE.Color(h));
+  const tuftTints = TUFT_TINTS.map(h => new THREE.Color(h));
   let ti = 0, fi = 0, tries = 0;
   // flowers grow in little clumps
   while (fi < NF && tries++ < 20000) {
@@ -135,7 +135,7 @@ export function dressWorld({ scene, col, P, material, mobile }) {
       occluders.push([x, z, 1.8 * S, 0.3]); nb++;
     } else if (nr < 40) {
       const S = 0.35 + rand() * 0.5;
-      sb.geo(new THREE.DodecahedronGeometry(S, 0), x, h + S * 0.25, z, rand() < 0.5 ? PAL.stone : PAL.stoneMid, { sy: 0.65, yaw: rand() * 6, jitter: 0.1, shade: { top: rand() < 0.4 ? PAL.grassHi : undefined } });
+      sb.geo(new THREE.DodecahedronGeometry(S, 0), x, h + S * 0.25, z, [PAL.stone, PAL.sandstone4, PAL.sandstone][Math.floor(rand() * 3)], { sy: 0.65, yaw: rand() * 6, jitter: 0.1, shade: { top: rand() < 0.4 ? PAL.grassHi : undefined } });
       occluders.push([x, z, 1.0 * S + 0.6, 0.22]); nr++;
     }
   }

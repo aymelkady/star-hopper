@@ -77,11 +77,11 @@ const CSS = `
 #gs-tutorial[hidden] { display: none; }
 #gs-tutorial h2 { margin: 0 0 14px; font-size: 34px; text-align: center; text-shadow: 0 3px 0 rgba(0,0,0,.35); }
 .gs-cards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 980px; }
-.gs-card { width: 200px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.gs-card { width: 220px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .gs-pad { position: relative; width: 180px; height: 120px; border-radius: 18px; border: 3px solid rgba(255,255,255,.75); background: rgba(255,255,255,.1); overflow: hidden; }
 .gs-pad::after { content: ''; position: absolute; left: 50%; top: 10px; bottom: 10px; border-left: 2px dashed rgba(255,255,255,.35); }
 .gs-hand { position: absolute; font-size: 46px; line-height: 1; left: 50%; top: 50%; transform: translate(-50%,-30%); filter: drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
-.gs-cap { font-size: 24px; font-weight: 800; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+.gs-cap { font-size: 23px; white-space: nowrap; font-weight: 800; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.4); }
 .gs-hint { margin-top: 18px; font-size: 22px; text-align: center; opacity: 0; transition: opacity .3s; }
 #gs-tutorial.ready .gs-hint { opacity: .9; animation: gs-pulse 1.2s ease-in-out infinite; }
 .gs-a-drag .gs-hand { left: 25%; animation: gs-drag 1.8s ease-in-out infinite; }
@@ -96,7 +96,7 @@ const CSS = `
 @keyframes gs-side { 0% { transform: translate(-110%,-30%); opacity: 0; } 15% { opacity: 1; } 70% { transform: translate(10%,-30%); opacity: 1; } 100% { transform: translate(10%,-30%); opacity: 0; } }
 html.reduce-motion .gs-hand { animation-duration: 3.6s !important; }
 @media (prefers-reduced-motion: reduce) { .gs-hand { animation-duration: 3.6s !important; } }
-@media (max-height: 430px) { .gs-card { width: 170px; } .gs-pad { width: 150px; height: 92px; } .gs-cap { font-size: 20px; } #gs-tutorial h2 { font-size: 26px; margin-bottom: 8px; } .gs-hint { margin-top: 10px; } }
+@media (max-height: 430px), (max-width: 960px) { .gs-cards { gap: 10px; } .gs-card { width: 180px; } .gs-pad { width: 150px; height: 92px; } .gs-cap { font-size: 19px; } #gs-tutorial h2 { font-size: 26px; margin-bottom: 8px; } .gs-hint { margin-top: 10px; } }
 `;
 
 export function createTouch(root = document.body) {
@@ -109,7 +109,7 @@ export function createTouch(root = document.body) {
   const now = () => performance.now();
   // Event time: the platform timestamp (same origin as performance.now()) so a janky frame never
   // stretches a quick tap into a "hold"; falls back to performance.now() when it looks foreign.
-  const tsOf = e => { const n = now(), ts = e && e.timeStamp; return ts > 0 && ts <= n + 5 && n - ts < 2000 ? ts : n; };
+  const tsOf = e => { const n = now(), ts = e && e.timeStamp; return ts > 0 && ts <= n + 5 ? ts : n; };
   const game = () => bound || (typeof window !== 'undefined' && window.__game) || null;
   const settings = () => { const g = game(); return (g && g.state && g.state.settings) || {}; };
 
@@ -138,10 +138,10 @@ export function createTouch(root = document.body) {
   function streak(x, y, ang) {
     const s = streaks[streakI++ % streaks.length];
     const r = `rotate(${ang}rad)`;
-    s.dataset.dir = ang.toFixed(2);
+    s.dataset.dir = ang.toFixed(2); s.dataset.t = String(now() | 0);
     animate(s, [
-      { transform: `translate(${x}px,${y}px) ${r} translateX(-40px) scaleX(.35)`, opacity: 0.95 },
-      { transform: `translate(${x}px,${y}px) ${r} translateX(30px) scaleX(1)`, opacity: 0 },
+      { transform: `translate(${x}px,${y}px) ${r} translateX(-10px) scaleX(.4)`, opacity: 0.95 },
+      { transform: `translate(${x}px,${y}px) ${r} translateX(50px) scaleX(1)`, opacity: 0 },
     ], G.STREAK_MS);
   }
   function tapRing(x, y) {
@@ -218,7 +218,7 @@ export function createTouch(root = document.body) {
   function travel(p) { return Math.hypot(p.x - p.x0, p.y - p.y0); }
   function dissolveGroup() {
     if (!group) return;
-    const g = group; group = null;
+    const g = group; group = null; clearTimeout(g.timer);
     for (const id of g.ids) { const p = ptrs.get(id); if (p) p.multi = false; }
     for (const p of g.deferred) fireJump(p);  // a real tap that just looked like half a two-finger tap
   }
@@ -251,7 +251,7 @@ export function createTouch(root = document.body) {
     if (lifted) {
       if (age <= G.TAP_MS && p.maxTravel < G.TAP_SLOP) {
         p.kind = 'tap';
-        if (p.multi && group) group.deferred.push(p); else fireJump(p);
+        if (p.multi && group) { group.deferred.push(p); groupDeadline(); } else fireJump(p);
       } else startOrbit(p);
       return;
     }
@@ -259,13 +259,20 @@ export function createTouch(root = document.body) {
     if (p.kind === 'hold' && p.maxTravel >= G.TAP_SLOP) startOrbit(p);
     else if (p.kind === 'flick' && age > G.FLICK_WAIT_MS) startOrbit(p);
   }
-  // Group deadline: wait one frame first so input already queued for this frame (a lift that
-  // physically happened in time) is processed before we give up on the two-finger tap.
-  function groupDeadline(delay) {
-    setTimeout(() => {
-      const go = () => checkGroup(now());
+  // Group deadline. Only needed when one finger already lifted as a tap and its partner is still
+  // down and still: after the 250 ms window that tap is a real jump. The clock follows the event
+  // timestamps (last event time + real time since), and we wait one frame so a lift already queued
+  // for this frame is processed first.
+  let lastEvTs = 0, lastEvReal = 0;
+  const evClock = () => lastEvTs + (now() - lastEvReal);
+  const stamp = t => { lastEvTs = t; lastEvReal = now(); };
+  function groupDeadline() {
+    const g = group; if (!g) return;
+    clearTimeout(g.timer);
+    g.timer = setTimeout(() => {
+      const go = () => { if (group === g && g.deferred.length && evClock() - g.t0 > G.TWO_UP_MS) dissolveGroup(); else if (group === g) groupDeadline(); };
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(go, 0)); else go();
-    }, delay);
+    }, Math.max(16, G.TWO_UP_MS - (evClock() - g.t0) + 5));
   }
 
   const capture = e => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ } };
@@ -281,7 +288,7 @@ export function createTouch(root = document.body) {
 
   el.addEventListener('pointerdown', e => {
     e.preventDefault(); capture(e); state.active = true;
-    const t = tsOf(e);
+    const t = tsOf(e); stamp(t);
     const p = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: t, samples: [{ x: e.clientX, y: e.clientY, t }],
       maxTravel: 0, kind: 'pending', multi: false, lx: e.clientX, ly: e.clientY };
     if (e.pointerType === 'mouse') { p.kind = 'orbit'; ptrs.set(p.id, p); return; } // hybrid device: mouse drag orbits
@@ -300,7 +307,6 @@ export function createTouch(root = document.body) {
       if (t - q.t0 <= G.TWO_DOWN_MS && q.maxTravel < G.TAP_SLOP) {
         group = { ids: new Set([q.id, p.id]), t0: q.t0, lifted: new Set(), deferred: [] };
         p.multi = q.multi = true;
-        groupDeadline(Math.max(0, G.TWO_UP_MS - (now() - q.t0)) + 5);
         break;
       }
     }
@@ -309,7 +315,7 @@ export function createTouch(root = document.body) {
   el.addEventListener('pointermove', e => {
     const p = ptrs.get(e.pointerId); if (!p) return;
     e.preventDefault();
-    const t = tsOf(e);
+    const t = tsOf(e); stamp(t);
     if (p.kind !== 'stick' && p.kind !== 'orbit' && e.getCoalescedEvents) {
       for (const c of e.getCoalescedEvents().slice(0, -1)) {   // intermediate samples (janky frames)
         const ct = tsOf(c); if (ct < p.samples[p.samples.length - 1].t) continue;
@@ -331,7 +337,7 @@ export function createTouch(root = document.body) {
 
   function lift(e, cancelled) {
     const p = ptrs.get(e.pointerId); if (!p) return;
-    const t = tsOf(e);
+    const t = tsOf(e); stamp(t);
     if (!cancelled && p.kind !== 'stick' && p.kind !== 'orbit') {
       p.x = e.clientX; p.y = e.clientY; p.maxTravel = Math.max(p.maxTravel, travel(p));
       p.samples.push({ x: p.x, y: p.y, t });
@@ -349,7 +355,7 @@ export function createTouch(root = document.body) {
         else {
           group.lifted.add(p.id);
           if (group.lifted.size === group.ids.size) {        // both fingers up in time, both still
-            group = null;
+            clearTimeout(group.timer); group = null;
             latch.pause = true; buzz();
             tapRing(p.x, p.y);
           }
@@ -362,7 +368,7 @@ export function createTouch(root = document.body) {
   el.addEventListener('contextmenu', e => e.preventDefault());
 
   function resetAll() {
-    ptrs.clear(); group = null; stickId = null;
+    ptrs.clear(); if (group) clearTimeout(group.timer); group = null; stickId = null;
     state.mx = state.my = 0; state.crouchHeld = state.poundHeld = state.longHeld = false;
     stickEl.classList.remove('on');
   }
@@ -419,6 +425,8 @@ export function createTouch(root = document.body) {
     },
     showTutorial: () => showTutorial(false),
     hideTutorial: () => hideTutorial(true),
+    /** test/debug snapshot of the recogniser */
+    debug() { return { pointers: [...ptrs.values()].map(p => ({ id: p.id, kind: p.kind, dir: p.dir, multi: p.multi })), group: group ? [...group.ids] : null, stickId, latch: { ...latch } }; },
     get tutorialOpen() { return !!(tut && !tut.hidden); },
   };
 }

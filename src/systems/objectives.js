@@ -6,7 +6,8 @@
  *  - Zone wayfinding: target = zone entrance while Pip is in the hub / another zone.
  *  - pickup:star -> ui:celebrate + 2.5 s celebration card -> advance -> objective:changed.
  *  - Today's Quest (3 stars, date-stamped in save data.todayQuest) + "Great session!" card.
- * Returned API (window.__game.plugins.objectives): current(), skip(), order(), quest(), target()
+ * Returned API (window.__game.plugins.objectives): current(), skip(), order(), quest(), target(),
+ *   introsShown, lastCelebration, debugHoldTimers(bool)
  */
 import { createBeacon } from './beacon.js';
 import { createQuestCard } from '../ui/quest-card.js';
@@ -33,7 +34,7 @@ export function init(ctx) {
   const card = createQuestCard({ onSkip: () => skip(), onIntroTap: () => endIntro() });
   card.show(false);
 
-  let current = null, celebrateT = 0, introT = 0, still = false, active = false, introsShown = 0, lastCelebration = '';
+  let current = null, celebrateT = 0, introT = 0, still = false, active = false, introsShown = 0, lastCelebration = '', hold = false;
   let quest = null;             // { date, stars:[ids], celebrated }
   const skipRank = new Map(); let skipN = 0;
   let route = { target: null, via: null };
@@ -185,11 +186,11 @@ export function init(ctx) {
   events.on('tick', ({ dt }) => {
     const now = performance.now(), rdt = Math.min(1, (now - lastNow) / 1000); lastNow = now; // UI timers use wall-clock time
     if (!active) return;
-    if (celebrateT > 0) {
+    if (celebrateT > 0 && !hold) {
       celebrateT -= rdt;
       if (celebrateT <= 0) { card.objective(); advance(); if (questJustDone()) showGreatSession(); }
     }
-    if (introT > 0) { introT -= rdt; if (introT <= 0) endIntro(); }
+    if (introT > 0 && !hold) { introT -= rdt; if (introT <= 0) endIntro(); }
     routeT -= dt;
     if (routeT <= 0) { routeT = 0.1; route = computeRoute(current); }
     const pp = pip.root.position;
@@ -210,5 +211,6 @@ export function init(ctx) {
     get celebrating() { return celebrateT > 0; },
     get introsShown() { return introsShown; },
     get lastCelebration() { return lastCelebration; },
+    debugHoldTimers(v) { hold = !!v; }, // tests: freeze the celebration / intro cards for screenshots
   };
 }

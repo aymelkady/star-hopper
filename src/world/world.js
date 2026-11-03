@@ -7,14 +7,15 @@ import { CollisionWorld } from '../core/collision.js';
 import { StaticBuilder, rand, setSeed } from './builder.js';
 import { createSky } from './sky.js';
 import { buildTerrain, paintTerrain, zoneAt, ZONE_NAMES, WATER_Y, WORLD_HALF } from './terrain.js';
-import { buildHorizon } from './horizon.js';
+import { buildHorizon, buildCloudSea } from './horizon.js';
 import { createWater } from './water.js';
 import { dressWorld } from './dressing.js';
 import { PAL } from './palette.js';
 import { vcMaterial, named } from './materials.js';
 
 // Light rig tuned for the flat/toon look (punchy colours, no tone mapping).
-export const LIGHT = { key: 1.15, hemi: 0.8, back: 0.3 };
+// (three r155+ lights are not scaled by PI: lit faces get ~(key + hemi + ambient) / PI x albedo)
+export const LIGHT = { key: 1.7, hemi: 1.2, back: 0.5, ambient: 0.9 };
 import { createProps } from './props.js';
 import * as extra from './props-extra.js';
 import * as hub from './zones/hub.js';
@@ -34,7 +35,7 @@ export function createWorld({ scene, events, state, mobile = false }) {
   const col = new CollisionWorld(8);
   const staticMat = named(vcMaterial(), 'static-vc');
   const terrainMat = named(vcMaterial({ side: THREE.DoubleSide }), 'terrain');
-  const horizonMat = named(vcMaterial(), 'horizon');
+  const horizonMat = named(new THREE.MeshBasicMaterial({ vertexColors: true }), 'horizon'); // baked shading
 
   // --- lights: warm shadowed key + cool hemisphere fill + soft cool back/rim light ---
   const hemi = new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, LIGHT.hemi);
@@ -48,14 +49,18 @@ export function createWorld({ scene, events, state, mobile = false }) {
   scene.add(sun); scene.add(sun.target);
   const back = new THREE.DirectionalLight(PAL.backLight, LIGHT.back);
   back.position.set(-30, 25, -40); scene.add(back);
+  const fill = new THREE.AmbientLight(PAL.ambient, LIGHT.ambient); // warm lift so shade never reads grey
+  scene.add(fill);
   const SUN_OFF = new THREE.Vector3(28, 55, 22);
-  scene.fog = new THREE.Fog(PAL.skyHorizon, 120, 480);
+  scene.fog = new THREE.Fog(PAL.skyHorizon, 150, 620);
   scene.background = new THREE.Color(PAL.skyHorizon);
 
   const sky = createSky(scene);
   const terrain = buildTerrain(col, terrainMat);
   scene.add(terrain);
   scene.add(buildHorizon(horizonMat));
+  const cloudSeaMat = named(new THREE.MeshBasicMaterial({ vertexColors: true }), 'cloud-sea');
+  scene.add(buildCloudSea(cloudSeaMat));
 
   // --- water (sea east of the cove + meadow pool): one mesh, waves in the vertex shader ---
   const water = createWater();
@@ -78,6 +83,8 @@ export function createWorld({ scene, events, state, mobile = false }) {
     results[name] = mod.build(ctx) || {};
     scene.add(sb.build(staticMat));
   }
+  // the sea spills over the east lip of the Sky Towers abyss into the cloud sea
+  extra.waterfall(P, 43.9, -18, -68, 64, 17.2, Math.PI / 2);
   const dressing = dressWorld({ scene, col, P, material: staticMat, mobile });
   paintTerrain(terrain, col, occluders.concat(dressing.occluders));
   P.finalize();
@@ -90,7 +97,7 @@ export function createWorld({ scene, events, state, mobile = false }) {
   });
 
   const world = {
-    col, props: P, scene, sun, hemi, back, sky, water, waterMat, zones: results, dressing,
+    col, props: P, scene, sun, hemi, back, fill, sky, water, waterMat, zones: results, dressing,
     spawn: results.hub.spawn || { x: 0, y: 0.1, z: 14, facing: Math.PI },
     zoneAt, zoneName: z => ZONE_NAMES[z] || z, STAR_ORDER,
     stars: P.stars,

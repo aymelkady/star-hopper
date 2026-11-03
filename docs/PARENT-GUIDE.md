@@ -39,13 +39,13 @@ no game-over), and has a built-in break timer.
 ## Controls
 | Action | Touch (iPad / Android) | Keyboard | Gamepad |
 |---|---|---|---|
-| Move | Left thumb: joystick appears where you touch | W A S D or arrows | Left stick |
-| Jump (tap again on landing for higher jumps) | **A** button | Space | A |
-| Long jump (while running) | **B** button | Shift + Space | B |
-| Ground pound (in the air) | **X** button | E | X |
-| Camera | Drag with right thumb | Q / E, or drag mouse | Right stick |
+| Move | Drag on the left side | W A S D or arrows | Left stick |
+| Jump (tap again on landing for higher jumps) | Tap the right side | Space | A |
+| Long jump (while running) | Swipe sideways | Shift + Space | B |
+| Ground pound (in the air) | Swipe down | E | X |
+| Camera | Slow drag on the right side | Q / E, or drag mouse | Right stick |
 | Focus mode | Eye icon | F | Back / View |
-| Pause / Settings | ❚❚ icon | Esc | Start |
+| Pause / Settings | ❚❚ icon or two-finger tap | Esc | Start |
 | Skip current goal | Quest card → Skip | Tab | Pause menu → Skip goal |
 
 ## Honest limits

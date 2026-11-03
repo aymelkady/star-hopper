@@ -13,16 +13,16 @@ const fmtTime = s => { const m = Math.floor(s / 60); return m < 60 ? `${m} min` 
 
 export const PIP_ICON = `<svg class="pip-ico" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 14 L11 2 L18 10 Z M32 14 L29 2 L22 10 Z" fill="#ff8a1f" stroke="#1d1530" stroke-width="2" stroke-linejoin="round"/><circle cx="20" cy="22" r="15" fill="#ff8a1f" stroke="#1d1530" stroke-width="2.5"/><ellipse cx="20" cy="28" rx="9" ry="6" fill="#fff1d6"/><circle cx="14.5" cy="20" r="4" fill="#fff"/><circle cx="25.5" cy="20" r="4" fill="#fff"/><circle cx="15" cy="20.5" r="2.2" fill="#2b2340"/><circle cx="25" cy="20.5" r="2.2" fill="#2b2340"/><circle cx="20" cy="26" r="1.6" fill="#2b2340"/></svg>`;
 
-// Exact mapping, kept in sync with docs/PARENT-GUIDE.md and README.md.
+// Exact mapping, kept in sync with docs/PARENT-GUIDE.md, README.md and GESTURE_HELP in core/touch.js.
 const CONTROLS = [
   // [label, touch, keyboard, gamepad]
-  ['🏃 Move', 'Left thumb: stick', '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows', 'Left stick'],
-  ['⬆ Jump', 'Green <b>Jump</b>', '<kbd>Space</kbd>', 'A'],
-  ['➜ Long jump', 'Red <b>Long</b>', '<kbd>Shift</kbd> + <kbd>Space</kbd>', 'B'],
-  ['⬇ Pound', 'Blue <b>Pound</b> (in air)', '<kbd>E</kbd> / <kbd>X</kbd> in air', 'X'],
-  ['🎥 Camera', 'Drag right side', '<kbd>Q</kbd> <kbd>E</kbd> / mouse drag', 'Right stick'],
+  ['🏃 Move', 'Drag left side', '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows', 'Left stick'],
+  ['⬆ Jump', 'Tap right side', '<kbd>Space</kbd>', 'A'],
+  ['➜ Long jump', 'Run, swipe sideways', '<kbd>Shift</kbd> + <kbd>Space</kbd>', 'B'],
+  ['⬇ Pound', 'Swipe down in air', '<kbd>E</kbd> / <kbd>X</kbd> in air', 'X'],
+  ['🎥 Camera', 'Slow drag right side', '<kbd>Q</kbd> <kbd>E</kbd> / mouse drag', 'Right stick'],
   ['👁 Focus', 'Eye button', '<kbd>F</kbd>', 'Back'],
-  ['❚❚ Pause', 'Pause button', '<kbd>Esc</kbd>', 'Start'],
+  ['❚❚ Pause', 'Two-finger tap', '<kbd>Esc</kbd>', 'Start'],
   ['⏭ Skip goal', 'Quest card: Skip', '<kbd>Tab</kbd>', 'Pause menu'],
 ];
 

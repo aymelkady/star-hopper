@@ -29,17 +29,23 @@ export function createWater() {
   };
   // near sea: fine grid so the shore foam follows the coastline
   const seaDepth = (x, z) => WATER_Y - ground(x, z);
-  for (let x = 36; x < 220; x += 2.5) for (let z = -140; z < 140; z += 2.5) {
+  for (let x = 36.5; x < 221; x += 2.5) for (let z = -140; z < 140; z += 2.5) {
     // skip quads fully on dry land
     if (seaDepth(x, z) < -0.6 && seaDepth(x + 2.5, z) < -0.6 && seaDepth(x, z + 2.5) < -0.6 && seaDepth(x + 2.5, z + 2.5) < -0.6) continue;
+    if (Math.max(seaDepth(x, z), seaDepth(x + 2.5, z + 2.5)) > 29) continue; // abyss valley: clouds, not sea
     quad(x, z, 2.5, WATER_Y, seaDepth);
   }
   // far sea: big quads (deep colour) out past the fog
   const big = (x0, z0, x1, z1) => {
-    const s = 80;
-    for (let x = x0; x < x1; x += s) for (let z = z0; z < z1; z += s) quad(x, z, s, WATER_Y, () => 20);
+    const s = 40;
+    for (let x = x0; x < x1; x += s) for (let z = z0; z < z1; z += s) {
+      // only real sea: skip where the outer land is above the water (or is the cloud-filled abyss)
+      const hs = [ground(x, z), ground(x + s, z), ground(x, z + s), ground(x + s, z + s), ground(x + s / 2, z + s / 2)];
+      if (Math.min(...hs) > WATER_Y + 0.5 || Math.min(...hs) < -30) continue;
+      quad(x, z, s, WATER_Y, () => 20);
+    }
   };
-  big(220, -940, 940, 940); big(36, 140, 220, 940); big(36, -940, 220, -140);
+  big(221, -940, 941, 940); big(36.5, 140, 221, 940); big(36.5, -940, 221, -140);
   // meadow pool (circle)
   const poolDepth = (x, z) => POOL.y - (terrainHeight(x, z) ?? -5);
   const segs = 28, rings = 4;

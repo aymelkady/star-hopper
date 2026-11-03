@@ -51,11 +51,11 @@ export const PAL = {
   skyTop: 0x2a74e0,
   skyMid: 0x6cb8f4,
   skyLow: 0xb4dcfa,
-  skyHorizon: 0xf4ecd0,   // warm pale horizon (= fog colour)
+  skyHorizon: 0xe6f0e4,   // warm pale horizon (= fog colour)
   fog: 0xe2ecdc,
   sun: 0xfff6d8,
   sunGlow: 0xffd98a,
-  cloud: 0xfffcf4,
+  cloud: 0xf6faff,
   cloudShade: 0xc8dcf4,
   // ---- mountains (near -> far) ----
   mtnNear: 0x4e9e4a,
@@ -90,7 +90,7 @@ export const PAL = {
   towersAccent: 0x8a6cff,
   roofRed: 0xe0503e,
   roofRedLo: 0xa83a30,
-  hutWall: 0xf4dcae,
+  hutWall: 0xf8d49a,
   // ---- props ----
   white: 0xfffaf0,        // "white" paint (warm)
   ink: 0x2b1d45,          // dark details (eyes, mouths)
@@ -140,7 +140,11 @@ export const PAL = {
   hemiSky: 0xbfe4ff,
   hemiGround: 0x6a8f3c,
   backLight: 0xa8c8ff,
+  ambient: 0xffe8c8,      // warm ambient lift
 };
+
+// Per-instance multipliers for grass tufts (subtle warm/cool variation on the vertex colours).
+export const TUFT_TINTS = [0xffffff, 0xf0fff0, 0xe8ffd8, 0xfff8e0];
 
 // Accent colours per zone, handy for wayfinding props.
 export const ZONE_ACCENT = { hub: PAL.hubAccent, meadow: PAL.meadowAccent, cove: PAL.coveAccent, towers: PAL.towersAccent };

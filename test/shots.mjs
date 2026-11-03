@@ -20,7 +20,7 @@ const SPOTS = {
   meadow: [-38, 1, 4, -Math.PI / 2],
   cove: [36, 1, -2, Math.PI / 2],
   towers: [0, 1, -46, Math.PI],
-  'hub-treetop': [-4.5, 7.2, 0.5, Math.PI],
+  'hub-treetop': [1, 7.2, -4.7, -Math.PI / 2 + 0.2],
   'hub-east': [4.5, 7.2, -1, Math.PI / 2 + 0.3],
   'towers-summit': [1, 17.7, -92.6, 0.15],
   'towers-north': [1, 17.7, -93, Math.PI - 0.5],
@@ -74,6 +74,7 @@ const report = {};
 if (!only || only.has('phone')) { // phone 844x390 touch
   const { ctx, page } = await open(browser, { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
   await startPlay(page);
+  await page.touchscreen.tap(422, 300); await page.waitForTimeout(500); // dismiss the how-to-move card
   await page.screenshot({ path: shot('phone') });
   report.mobile = { hub: await page.evaluate(() => window.__game.drawCalls()) };
   for (const name of ['towers-summit', 'cove-beach']) { await goTo(page, SPOTS[name]); report.mobile[name] = await page.evaluate(() => window.__game.drawCalls()); }

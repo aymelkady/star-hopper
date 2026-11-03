@@ -12,6 +12,14 @@ import { PAL } from './palette.js';
 import { terrainHeight, groundColor, fbm, noise2, smooth, WATER_Y } from './terrain.js';
 
 const col = h => new THREE.Color(h);
+// baked light for the unlit horizon mesh: sun from +x/+z, high
+const SUN = new THREE.Vector3(0.42, 0.82, 0.33).normalize();
+function bake(a, b, c) {
+  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+  let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const L = Math.hypot(nx, ny, nz) || 1;
+  nx /= L; ny /= L; nz /= L; if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+  return 0.62 + 0.42 * Math.max(0, nx * SUN.x + ny * SUN.y + nz * SUN.z);
+}
 
 export function outerHeight(x, z) {
   const ax = Math.abs(x), az = Math.abs(z);
@@ -21,15 +29,16 @@ export function outerHeight(x, z) {
   if (base === null) base = -45;
   // plateau above the waterfall cliff
   if (x < -99) base = Math.max(base, 18.3 * (1 - smooth(46, 60, az)));
-  const rise = Math.pow(smooth(0, 120, d), 1.4) * (20 + 34 * fbm(x * 0.012 + 3, z * 0.012 - 5)) + smooth(0, 30, d) * 2 * noise2(x * 0.08, z * 0.08);
+  const rise = Math.pow(smooth(0, 170, d), 1.6) * (16 + 30 * fbm(x * 0.012 + 3, z * 0.012 - 5)) + smooth(0, 30, d) * 1.5 * noise2(x * 0.08, z * 0.08);
   let h = base + rise;
   // deep valley continuing the Sky Towers abyss to the north (filled by the cloud sea)
   if (z < -36) {
-    const v = (1 - smooth(46, 78 + (-z - 100) * 0.15, ax)) * (1 - smooth(170, 260, -z));
+    const dz = Math.max(0, -z - 100);
+    const v = (1 - smooth(46 + dz * 0.9, 80 + dz * 1.6, ax)) * (1 - smooth(230, 330, -z));
     h += (-45 - h) * v;
   }
-  // the sea to the east
-  const sea = smooth(44, 80, x) * (z > -40 || x > 60 ? 1 : smooth(60, 90, x));
+  // the sea to the east (its north shore stays clear of the abyss valley)
+  const sea = smooth(44, 80, x) * Math.max(smooth(-106, -98, z), smooth(170, 240, x)) * (z > -40 || x > 60 ? 1 : smooth(60, 90, x));
   h += (-7 - h) * sea;
   return h;
 }
@@ -59,7 +68,8 @@ function mountain(push, x, z, R, H, layer, snowy) {
       const a = rot + (i / k) * Math.PI * 2 + (rand() - 0.5) * 0.35;
       const r = R * rr * (0.85 + rand() * 0.3);
       const y = ri === 0 ? -30 : H * (ringH[ri] + (rand() - 0.5) * 0.12 * (ri < 3 ? 1 : 0));
-      pts.push([x + Math.cos(a) * r + off[0] * R * 0.3 * ringH[ri], y, z + Math.sin(a) * r + off[1] * R * 0.3 * ringH[ri]]);
+      const sh = R * 0.3 * Math.max(0, ringH[ri]);
+      pts.push([x + Math.cos(a) * r + off[0] * sh, y, z + Math.sin(a) * r + off[1] * sh]);
     }
     return pts;
   });
@@ -71,7 +81,7 @@ function mountain(push, x, z, R, H, layer, snowy) {
     // light from the sun side (+x,+z) baked a little into the face colour
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
     let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
-    const lit = 0.84 + 0.22 * (nx * 0.6 + nz * 0.5 + ny * 0.6);
+    const lit = bake(a, b, c) * 1.02;
     let cc;
     if (band === 0) cc = C[0].clone();
     else if (band === 1) cc = (snowy ? C[2] : C[1]).clone().lerp(C[1], 0.3);
@@ -111,32 +121,20 @@ export function buildHorizon(material) {
       const mx = (p[0] + q[0] + r[0]) / 3, my = (p[1] + q[1] + r[1]) / 3, mz = (p[2] + q[2] + r[2]) / 3;
       if (my < -8 && mx > 40) continue; // under the sea: never visible
       outerColor(mx, mz, my, Math.max(Math.abs(mx), Math.abs(mz)) - 100, cc);
-      cc.multiplyScalar(0.96 + rand() * 0.08);
+      cc.multiplyScalar((0.96 + rand() * 0.08) * bake(p, q, r));
       push(p, q, r, cc);
     }
   }
 
-  // ---- cloud sea in the abyss below the Sky Towers ----
-  const cs = 6, cw = Math.ceil(110 / cs), ch = Math.ceil(300 / cs);
-  const cy = (x, z) => -17 + 2.6 * fbm(x * 0.05, z * 0.05) + 1.4 * noise2(x * 0.2, z * 0.2);
-  const white = new THREE.Color(PAL.cloud), shade = new THREE.Color(PAL.cloudShade);
-  for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
-    const x = -55 + i * cs, z = -34 - j * cs;
-    const a = [x, cy(x, z), z], b = [x + cs, cy(x + cs, z), z], c = [x, cy(x, z - cs), z - cs], d = [x + cs, cy(x + cs, z - cs), z - cs];
-    for (const [p, q, r] of [[a, b, d], [a, d, c]]) {
-      const my = (p[1] + q[1] + r[1]) / 3;
-      cc2.copy(shade).lerp(white, smooth(-17.3, -14.8, my));
-      push(p, q, r, cc2);
-    }
-  }
-
+  const mStart = pos.length;
   // ---- mountains: 3 rings (near / mid / far), sea gap to the east ----
   const layers = [
-    { r: [160, 195], h: [38, 70], R: [45, 70], n: 26, gap: 1.0, snowAt: 999 },
+    { r: [175, 205], h: [36, 62], R: [45, 66], n: 28, gap: 1.0, snowAt: 999 },
     { r: [225, 265], h: [70, 115], R: [60, 90], n: 22, gap: 0.62, snowAt: 92 },
     { r: [305, 350], h: [105, 170], R: [70, 110], n: 20, gap: 0, snowAt: 120 },
   ];
   layers.forEach((L, li) => {
+    L.minIn = li === 0 ? 128 : 150;
     for (let i = 0; i < L.n; i++) {
       const a = (i / L.n) * Math.PI * 2 + rand() * 0.2;
       const ex = Math.cos(a), ez = Math.sin(a);
@@ -145,18 +143,51 @@ export function buildHorizon(material) {
         if (L.gap && ex > 1 - L.gap * 0.8) continue;
         hScale = 0.5;
       }
-      const r = L.r[0] + rand() * (L.r[1] - L.r[0]);
+      let r = L.r[0] + rand() * (L.r[1] - L.r[0]);
+      if (ez < -0.55) r += [110, 90, 50][li]; // north: rise out of the cloud sea, well beyond the towers
       const Hh = (L.h[0] + rand() * (L.h[1] - L.h[0])) * hScale;
-      const R = L.R[0] + rand() * (L.R[1] - L.R[0]);
+      const R = Math.min(L.R[0] + rand() * (L.R[1] - L.R[0]), (r - L.minIn) / 1.15);
       mountain(push, ex * r, ez * r, R, Hh, li, Hh > L.snowAt);
     }
   });
 
+  // misty mountain feet: low vertices fade toward the haze colour
+  const haze = new THREE.Color(PAL.skyHorizon);
+  for (let i = mStart; i < pos.length; i += 3) {
+    const t = smooth(14, -16, pos[i + 1]) * 0.8;
+    if (t > 0) { cols[i] += (haze.r - cols[i]) * t; cols[i + 1] += (haze.g - cols[i + 1]) * t; cols[i + 2] += (haze.b - cols[i + 2]) * t; }
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
   g.computeVertexNormals(); g.computeBoundingSphere();
   const mesh = new THREE.Mesh(g, material);
   mesh.name = 'horizon'; mesh.castShadow = false; mesh.receiveShadow = false; mesh.frustumCulled = false;
+  return mesh;
+}
+
+// Soft lumpy cloud sea filling the abyss below the Sky Towers (unlit, baked shading).
+export function buildCloudSea(material) {
+  const pos = [], cols = [];
+  const cs = 7, x0 = -200, x1 = 200, z0 = -34, z1 = -440;
+  const cy = (x, z) => -17 + 3 * fbm(x * 0.04, z * 0.04) + 1.2 * noise2(x * 0.18, z * 0.18);
+  const white = new THREE.Color(PAL.cloud), shade = new THREE.Color(PAL.cloudShade), c = new THREE.Color();
+  for (let z = z0; z > z1; z -= cs) for (let x = x0; x < x1; x += cs) {
+    // only where the ground is below the cloud tops (the abyss + the valley beyond)
+    const lowest = Math.min(outerHeight(x, z), outerHeight(x + cs, z), outerHeight(x, z - cs), outerHeight(x + cs, z - cs));
+    if (lowest > -12) continue;
+    const a = [x, cy(x, z), z], b = [x + cs, cy(x + cs, z), z], cc = [x, cy(x, z - cs), z - cs], d = [x + cs, cy(x + cs, z - cs), z - cs];
+    for (const [p, q, r] of [[a, b, d], [a, d, cc]]) {
+      const my = (p[1] + q[1] + r[1]) / 3;
+      c.copy(shade).lerp(white, smooth(-17.2, -14.6, my));
+      pos.push(...p, ...q, ...r); for (let k = 0; k < 3; k++) cols.push(c.r, c.g, c.b);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  g.computeVertexNormals(); g.computeBoundingSphere();
+  const mesh = new THREE.Mesh(g, material);
+  mesh.name = 'cloud-sea'; mesh.frustumCulled = false;
   return mesh;
 }

@@ -1,7 +1,7 @@
 // Sunny Meadow (west): hilltop flag, 8 red coins, 3 Grumbles, secret star behind the waterfall.
 import { HILL } from '../terrain.js';
 import { PAL } from '../palette.js';
-const ROCK = PAL.stone, ROCK2 = PAL.stoneMid, GRASS = PAL.grass, BARK = PAL.bark;
+const ROCK = PAL.sandstone4, ROCK2 = PAL.sandstone, GRASS = PAL.grass, BARK = PAL.bark;
 const LEAVES = [[PAL.leaf, PAL.leafHi], [PAL.leafHi, PAL.leafLime], [PAL.leafLo, PAL.leaf]];
 const LEAF_SH = { under: 0.45 };
 let treeN = 0;

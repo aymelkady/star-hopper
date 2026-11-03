@@ -80,10 +80,10 @@ const _g = new THREE.Color(), _e = new THREE.Color();
 // Colour of the ground at a grid vertex (before ambient occlusion).
 export function groundColor(x, z, h, out) {
   // grass: two-tone noise (base -> highlight), hollows + low ground toward shadow green
-  const n = fbm(x * 0.07, z * 0.07);
-  _g.copy(zoneAt(x, z) === 'hub' ? C.grassHub : C.grass).lerp(C.grassHi, smooth(0.5, 0.78, n) * 0.85);
-  _g.lerp(C.grassLo, smooth(0.36, 0.14, n) * 0.55);
-  if (h > 4) _g.lerp(C.grassTop, smooth(4, 11, h) * 0.6);
+  const n = fbm(x * 0.09, z * 0.09) * 0.75 + noise2(x * 0.31 + 40, z * 0.31) * 0.25;
+  _g.copy(C.grass).lerp(C.grassHi, smooth(0.52, 0.76, n) * 0.8);
+  _g.lerp(C.grassLo, smooth(0.4, 0.18, n) * 0.6);
+  if (h > 4) _g.lerp(C.grassTop, smooth(4, 11, h) * 0.35);
   // dirt paths with a soft edge and a lighter centre
   const pd = pathDist(x, z);
   if (pd < 3 && h > WATER_Y + 0.2) {

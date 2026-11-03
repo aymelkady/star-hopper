@@ -12,7 +12,8 @@ export function build({ THREE, sb, P, extra }) {
   const pillar = (x, z, top, r, color = STONE) => {
     const band = color === STONE ? STONE2 : STONE;
     sb.cyl(x, top - 30, z, r, 30, color, { seg: 9, rTop: r });
-    sb.cyl(x, top - 0.25, z, r + 0.15, 0.3, TOP, { seg: 9, collide: false });
+    sb.cyl(x, top - 0.25, z, r + 0.15, 0.3, PAL.towerCream2, { seg: 9, collide: false, shade: { top: STONE } });
+    sb.cyl(x, top - 0.55, z, r + 0.28, 0.32, GOLD, { seg: 9, collide: false, jitter: 0.03 });
     // painted bands + a hanging banner on the side facing the plaza
     sb.cyl(x, top - 1.4, z, r + 0.05, 0.5, band, { seg: 9, collide: false, jitter: 0.02 });
     sb.cyl(x, top - 3.2, z, r + 0.05, 0.25, GOLD, { seg: 9, collide: false, jitter: 0.02 });
@@ -73,7 +74,8 @@ export function build({ THREE, sb, P, extra }) {
   for (const z of [-56.9, -51.1]) sb.slab(-16.3, 0.02, z, 20.4, 0.05, 0.3, STONE2, { collide: false, jitter: 0 });
   sb.slab(-33.6, 7, -54, 11, 14, 9, STONE2, { flags: { noWallKick: true }, shade: { ao: 4 } });
   for (const y of [2, 4.5]) sb.slab(-33.6, y, -54, 11.1, 0.4, 9.1, y > 3 ? GOLD : STONE, { collide: false, jitter: 0.02 });
-  sb.slab(-33.6, 7.05, -54, 11.2, 0.3, 9.2, TOP, { collide: false });
+  sb.slab(-33.6, 7.05, -54, 11.2, 0.3, 9.2, STONE, { collide: false });
+  sb.slab(-33.6, 6.75, -54, 11.5, 0.3, 9.5, GOLD, { collide: false });
   star('towers-2', 'Triple-jump the gap', -35, 8.6, -54, { task: 'reach' });
   P.coinLine(-8, -54, -25, -54, 8, 1, { abs: 0 });
   P.coinRing(-34.5, -54, 2.8, 6, 1, { abs: 7 });
@@ -84,7 +86,9 @@ export function build({ THREE, sb, P, extra }) {
   P.checkpoint('towers-cp3', -21, -68, { y: 1.0, facing: Math.PI });
   const cx = -26, cz = -82, R = 6, a0 = Math.atan2(-73.2 - cz, -24 - cx);
   sb.cyl(cx, -30, cz, 3.5, 52.5, STONE, { seg: 10 });
-  sb.cyl(cx, 22.3, cz, 3.7, 0.3, TOP, { seg: 10, collide: false });
+  sb.cyl(cx, 22.3, cz, 3.7, 0.3, PAL.towerCream2, { seg: 10, collide: false, shade: { top: STONE } });
+  sb.cyl(cx, 22.0, cz, 3.85, 0.3, GOLD, { seg: 10, collide: false });
+  for (let k = 0; k < 5; k++) sb.cyl(cx, -6 + k * 5.6, cz, 3.56, 1.2, k % 2 ? GOLD : STONE2, { seg: 10, collide: false, jitter: 0.02 });
   const spiralStar = star('towers-3', 'Red coins up the spiral', cx, 24.1, cz, { hidden: true, task: 'redcoins' });
   const redSteps = [2, 5, 8, 11, 14, 16, 18, 20];
   for (let k = 0; k < 22; k++) {

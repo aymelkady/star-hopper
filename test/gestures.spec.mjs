@@ -20,19 +20,29 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 if (!existsSync(distFile)) { console.error('dist/star-hopper.html missing: run `npm run build` first'); process.exit(1); }
 
 // ---------- multi-touch driver (CDP) ----------
+// Every event carries an explicit timestamp from a virtual clock that advances only through
+// T.wait(ms).  CDP waits for the page to handle each event, so on a slow software-GL machine real
+// spacing would stretch a 50 ms tap into a long press; event.timeStamp (which the recogniser uses)
+// follows the virtual clock instead, exactly like a real finger on a janky frame.
 export function touchDriver(cdp) {
   const active = new Map();
+  let vt = Date.now();
   const pts = () => [...active.values()].map(p => ({ x: p.x, y: p.y, id: p.id, radiusX: 4, radiusY: 4, force: 1 }));
-  const send = type => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts() });
+  const send = type => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts(), timestamp: vt / 1000 });
+  const anchor = () => { const n = Date.now(); if (active.size === 0 || n - vt > 3000) vt = Math.max(vt, n); };
   const d = {
-    async down(id, x, y) { active.set(id, { id, x, y }); await send('touchStart'); },
+    async wait(ms) { vt += ms; await sleep(ms); },
+    async down(id, x, y) { anchor(); active.set(id, { id, x, y }); await send('touchStart'); },
+    /** several fingers touching in the same instant */
+    async downMany(list) { anchor(); for (const [id, x, y] of list) active.set(id, { id, x, y }); await send('touchStart'); },
     async move(id, x, y) { Object.assign(active.get(id), { x, y }); await send('touchMove'); },
     async up(id) { active.delete(id); await send('touchEnd'); },
-    async tap(id, x, y, hold = 40) { await d.down(id, x, y); await sleep(hold); await d.up(id); },
-    /** straight-line stroke: `steps` moves spread over `ms` real milliseconds */
+    async upMany(ids) { for (const id of ids) active.delete(id); await send('touchEnd'); },
+    async tap(id, x, y, hold = 40) { await d.down(id, x, y); await d.wait(hold); await d.up(id); },
+    /** straight-line stroke: `steps` moves spread over `ms` (virtual) milliseconds */
     async stroke(id, x, y, dx, dy, ms, steps = 5, lift = true) {
       await d.down(id, x, y);
-      for (let i = 1; i <= steps; i++) { await sleep(ms / steps); await d.move(id, x + dx * i / steps, y + dy * i / steps); }
+      for (let i = 1; i <= steps; i++) { await d.wait(ms / steps); await d.move(id, x + dx * i / steps, y + dy * i / steps); }
       if (lift) await d.up(id);
     },
   };
@@ -49,17 +59,25 @@ async function open(browser, viewport, { tutorialSeen = true } = {}) {
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(`[console] ${m.text()}`); });
   page.on('pageerror', e => errors.push(`[pageerror] ${e.message}`));
+  if (process.env.DEBUG_GEST) page.on('console', m => { if (m.text().startsWith('C ')) console.log('   ', m.text()); });
   await page.goto(URL_);
   await page.waitForFunction(() => window.__game && document.getElementById('btn-play'), null, { timeout: 20000 });
+  if (process.env.DEBUG_GEST) await page.evaluate(() => { window.__dbg = true; });
   await page.tap('#btn-play'); await page.tap('#slot-1');
   await page.waitForFunction(() => window.__game.ready === true, null, { timeout: 15000 });
   await page.evaluate(() => {
     window.__ev = [];
-    window.__game.events.on('*', (type, p) => { if (type !== 'tick') window.__ev.push({ type, p, t: performance.now() }); });
+    window.__tickN = 0;
+    window.__game.events.on('*', (type, p) => { if (type === 'tick') window.__tickN++; else window.__ev.push({ type, p, t: performance.now(), tick: window.__tickN }); });
   });
+  await lowRes(page, true);
   const cdp = await context.newCDPSession(page);
   return { context, page, errors, T: touchDriver(cdp) };
 }
+// Software GL is slow (and CI machines are busy): render at 1/4 resolution so input events are
+// delivered promptly; switch back to full resolution just for screenshots.
+const lowRes = (page, on) => page.evaluate(v => { const r = window.__game.renderer; if (r) { r.setPixelRatio(v ? 0.25 : 1); window.dispatchEvent(new Event('resize')); } }, on);
+async function shot(page, file) { await lowRes(page, false); await sleep(120); await page.screenshot({ path: join(root, file) }); await lowRes(page, true); }
 const mark = page => page.evaluate(() => performance.now());
 const evs = (page, type, since) => page.evaluate(([t, s]) => window.__ev.filter(e => e.type === t && e.t >= s), [type, since]);
 const count = async (page, type, since) => (await evs(page, type, since)).length;
@@ -91,8 +109,13 @@ async function openRunway(page) {
   await sleep(100);
   return found;
 }
+// Teleport Pip up and slow time down so the fall outlasts a swipe even on a slow software-GL box
+// (the game keeps stepping physics, so latched gestures are still consumed).  slowmo(page,1) restores.
+const slowmo = (page, k) => page.evaluate(v => window.__game.setTimeScale(v), k);
+const waitEv = (page, type, since, n = 1, timeout = 6000) => page.waitForFunction(([ty, s, k]) => window.__ev.filter(e => e.type === ty && e.t >= s).length >= k, [type, since, n], { timeout }).catch(() => {});
 async function airborne(page, up = 7) {
-  await page.evaluate(h => { const g = window.__game, p = g.player.position; g.player.teleport(p.x, p.y + h, p.z); }, up);
+  await slowmo(page, 0.15);
+  await page.evaluate(h => { const g = window.__game, p = g.player.position; g.player.teleport(p.x, p.y + h, p.z); g.player.sinceGround = 9; }, up); // no coyote window after a teleport
   await page.waitForFunction(() => !window.__game.player.grounded, null, { timeout: 2000 }).catch(() => {});
   await sleep(40);
 }
@@ -103,7 +126,7 @@ async function run(browser, name, viewport) {
   const W = viewport.width, H = viewport.height;
   const R = { x: W * 0.72, y: H * 0.55 };   // right-half gesture spot
   const L = { x: W * 0.2, y: H * 0.7 };     // left-half stick spot
-  await sleep(300);
+  await T.wait(300);
 
   // --- DOM: no gameplay buttons ---
   const dom = await page.evaluate(() => ({
@@ -120,20 +143,21 @@ async function run(browser, name, viewport) {
   await home(page);
   let p0 = await pos(page);
   await T.down(1, L.x, L.y);
-  for (let i = 1; i <= 6; i++) { await sleep(16); await T.move(1, L.x, L.y - i * 12); }
-  await sleep(120);
+  for (let i = 1; i <= 6; i++) { await T.wait(16); await T.move(1, L.x, L.y - i * 12); }
+  await T.wait(120);
   const stickVis = await page.evaluate(() => { const s = document.getElementById('gs-stick'); return { on: s.classList.contains('on'), op: +getComputedStyle(s).opacity, left: parseFloat(s.style.left) }; });
   ok(stickVis.on && Math.abs(stickVis.left - L.x) < 2, `stick ring appears at the touch point (opacity ${stickVis.op.toFixed(2)})`);
-  if (name === 'ipad') await page.screenshot({ path: join(root, 'test/shots/gesture-stick.png') });
-  await sleep(900);
+  if (name === 'ipad') await shot(page, 'test/shots/gesture-stick.png');
+  await T.wait(900);
   // drift onto the right half: still the stick
   await T.move(1, W * 0.6, L.y - 72);
-  await sleep(80);
+  await T.wait(80);
+  await page.waitForFunction(() => window.__game.touch.state.mx > 0.5, null, { timeout: 3000 }).catch(() => {});
   const drift = await page.evaluate(() => ({ mx: window.__game.touch.state.mx, my: window.__game.touch.state.my }));
   ok(drift.mx > 0.5, `stick keeps steering after drifting to the right half (mx ${drift.mx.toFixed(2)})`);
-  await sleep(300);
+  await T.wait(300);
   await T.up(1);
-  await sleep(250);
+  await T.wait(250);
   let p1 = await pos(page);
   const moved = Math.hypot(p1.x - p0.x, p1.z - p0.z);
   ok(moved >= 5, `drag left moved Pip ${moved.toFixed(2)} m (≥ 5)`);
@@ -143,18 +167,22 @@ async function run(browser, name, viewport) {
   // dead zone: tiny wobble does not move
   await home(page);
   p0 = await pos(page);
-  await T.down(1, L.x, L.y); await sleep(30); await T.move(1, L.x + 6, L.y - 3); await sleep(400); await T.up(1); await sleep(100);
+  await T.down(1, L.x, L.y); await T.wait(30); await T.move(1, L.x + 6, L.y - 3); await T.wait(400); await T.up(1); await T.wait(100);
   p1 = await pos(page);
   ok(Math.hypot(p1.x - p0.x, p1.z - p0.z) < 0.05, 'stick dead zone: 6 px wobble does not move Pip');
 
   // --- tap = jump, no camera motion ---
   await home(page);
   let t = await mark(page), y0 = await yaw(page);
+  await page.evaluate(() => { window.__lift = null; window.addEventListener('pointerup', () => { window.__lift = window.__tickN; }, { capture: true, once: true }); });
   await T.tap(2, R.x, R.y, 50);
-  await sleep(120);
+  await waitEv(page, 'player:jump', t);
+  await T.wait(120);
   const jumps = await evs(page, 'player:jump', t);
   ok(jumps.length === 1, `tap right -> exactly one player:jump (${jumps.length})`);
-  ok(jumps.length && jumps[0].t - t < 50 + 60 + 40, `tap jump latency ${(jumps[0]?.t - t - 50).toFixed(0)} ms after lift`);
+  // latency in rendered frames (machine-independent): the jump must happen in the frame right after the lift
+  const liftTick = await page.evaluate(() => window.__lift);
+  ok(jumps.length && liftTick !== null && jumps[0].tick - liftTick <= 1, `tap jump fires in the first frame after the lift (${jumps[0]?.tick - liftTick} frame)`);
   ok(Math.abs(await yaw(page) - y0) < 0.01, 'tap does not orbit the camera');
   await settle(page);
   const apex = await page.evaluate(() => window.__ev.filter(e => e.type === 'player:land').at(-1));
@@ -163,14 +191,14 @@ async function run(browser, name, viewport) {
   // long press (> 180 ms, still) is NOT a jump
   await home(page);
   t = await mark(page);
-  await T.tap(2, R.x, R.y, 260); await sleep(80);
+  await T.tap(2, R.x, R.y, 260); await T.wait(80);
   ok(await count(page, 'player:jump', t) === 0, 'still press for 260 ms -> no jump');
 
   // --- slow drag = orbit only ---
   await home(page);
   t = await mark(page); y0 = await yaw(page);
   await slowDrag(T, 2, R.x, R.y, -180, 0);
-  await sleep(80);
+  await T.wait(80);
   const y1 = await yaw(page);
   ok(Math.abs(y1 - y0) > 0.2, `slow drag orbits the camera (Δyaw ${(y1 - y0).toFixed(2)})`);
   ok(await count(page, 'player:jump', t) + await count(page, 'player:longjump', t) + await count(page, 'player:poundstart', t) === 0, 'slow drag fires no jump / long jump / pound');
@@ -183,14 +211,16 @@ async function run(browser, name, viewport) {
   await home(page);
   t = await mark(page);
   await swipe(T, 2, R.x, R.y, 0, -120);
-  await sleep(100);
+  await T.wait(100);
   ok(await count(page, 'player:jump', t) === 1, 'swipe up on the ground -> player:jump');
   await settle(page);
-  await airborne(page, 8);
+  await airborne(page, 12);
   t = await mark(page);
   await swipe(T, 2, R.x, R.y, 0, -120);
-  await sleep(100);
-  ok(await count(page, 'player:jump', t) === 0, 'swipe up high in the air -> nothing');
+  await T.wait(100);
+  const airJumps = await count(page, 'player:jump', t), stillAir = await page.evaluate(() => !window.__game.player.grounded);
+  ok(airJumps === 0 && stillAir, `swipe up high in the air -> nothing (jumps ${airJumps}, still airborne ${stillAir})`);
+  await slowmo(page, 1);
   await settle(page);
 
   // --- swipe down ---
@@ -198,16 +228,20 @@ async function run(browser, name, viewport) {
   await airborne(page, 7);
   t = await mark(page); y0 = await yaw(page);
   await swipe(T, 2, R.x, R.y - 80, 0, 130);
-  await page.waitForFunction(s => window.__ev.some(e => e.type === 'player:groundpound' && e.t >= s), t, { timeout: 3000 }).catch(() => {});
+  await waitEv(page, 'player:poundstart', t);
+  await slowmo(page, 1);
+  await waitEv(page, 'player:groundpound', t);
   ok(await count(page, 'player:poundstart', t) === 1, 'swipe down in the air -> player:poundstart');
   ok(await count(page, 'player:groundpound', t) === 1, 'swipe down in the air -> player:groundpound on landing');
   ok(Math.abs(await yaw(page) - y0) < 0.01, 'swipe does not orbit the camera');
-  await settle(page); await sleep(300);
+  await settle(page); await T.wait(300);
   t = await mark(page);
   await T.stroke(2, R.x, R.y - 80, 0, 130, 60, 4, false);  // swipe down and keep holding
-  await sleep(120);
+  await T.wait(120);
+  await page.waitForFunction(() => window.__game.input.actions.crouch.held, null, { timeout: 3000 }).catch(() => {});
   const crouch = await page.evaluate(() => window.__game.input.actions.crouch.held);
-  await T.up(2); await sleep(80);
+  await T.up(2); await T.wait(80);
+  await page.waitForFunction(() => !window.__game.input.actions.crouch.held, null, { timeout: 3000 }).catch(() => {});
   const crouchAfter = await page.evaluate(() => window.__game.input.actions.crouch.held);
   ok(crouch && !crouchAfter, `swipe down on the ground -> crouch held until lift (${crouch} -> ${crouchAfter})`);
   ok(await count(page, 'player:poundstart', t) === 0 && await count(page, 'player:jump', t) === 0, 'grounded swipe down: no pound, no jump');
@@ -216,22 +250,26 @@ async function run(browser, name, viewport) {
   await home(page);
   t = await mark(page); y0 = await yaw(page);
   await swipe(T, 2, R.x - 60, R.y, 140, 0);
-  await sleep(120);
+  await T.wait(120);
   ok(await count(page, 'player:longjump', t) === 0 && await count(page, 'player:jump', t) === 0, 'side swipe standing still -> nothing');
   ok(Math.abs(await yaw(page) - y0) < 0.01, 'side swipe standing still -> no camera orbit either');
   await home(page);
   await T.down(1, L.x, L.y);
-  for (let i = 1; i <= 6; i++) { await sleep(16); await T.move(1, L.x, L.y - i * 12); }
+  for (let i = 1; i <= 6; i++) { await T.wait(16); await T.move(1, L.x, L.y - i * 12); }
   await page.waitForFunction(() => Math.hypot(window.__game.player.velocity.x, window.__game.player.velocity.z) > 6, null, { timeout: 2000 }).catch(() => {});
   t = await mark(page);
   await T.stroke(2, R.x - 60, R.y, 130, -50, 60, 4);   // diagonal-forward swipe while running
-  await sleep(120);
+  await T.wait(120);
   await T.up(1);
   ok(await count(page, 'player:longjump', t) === 1, 'diagonal-forward swipe while running -> player:longjump');
   if (name === 'ipad') {
-    await page.evaluate(() => document.getAnimations().forEach(a => { a.pause(); a.currentTime = 30; }));
-    await page.screenshot({ path: join(root, 'test/shots/gesture-swipe.png') });
-    await page.evaluate(() => document.getAnimations().forEach(a => a.play()));
+    // freeze the newest streak 40 ms into its 150 ms animation for the screenshot
+    await page.evaluate(() => {
+      const last = [...document.querySelectorAll('.gs-streak')].sort((a, b) => (+b.dataset.t || 0) - (+a.dataset.t || 0))[0];
+      if (last) last.getAnimations().forEach(a => { a.pause(); a.currentTime = 40; });
+    });
+    await shot(page, 'test/shots/gesture-swipe.png');
+    await page.evaluate(() => document.querySelectorAll('.gs-streak').forEach(n => n.getAnimations().forEach(a => a.finish())));
   }
   await settle(page);
 
@@ -240,8 +278,8 @@ async function run(browser, name, viewport) {
   const runway = await openRunway(page);
   ok(runway !== null, `found a clear runway for the combo (heading ${runway?.toFixed(2)})`);
   await T.down(1, L.x, L.y);
-  for (let i = 1; i <= 6; i++) { await sleep(16); await T.move(1, L.x, L.y - i * 12); }
-  await sleep(500);
+  for (let i = 1; i <= 6; i++) { await T.wait(16); await T.move(1, L.x, L.y - i * 12); }
+  await T.wait(500);
   t = await mark(page);
   await page.evaluate(([x, y]) => {
     const el = document.getElementById('touch-controls'); let n = 0, id = 900;
@@ -250,54 +288,57 @@ async function run(browser, name, viewport) {
       el.dispatchEvent(new PointerEvent('pointerdown', o));
       setTimeout(() => el.dispatchEvent(new PointerEvent('pointerup', o)), 45);
     };
+    if (window.__dbg) { for (const ty of ['player:land', 'player:jump']) window.__game.events.on(ty, p => console.log('C', ty, JSON.stringify(p), window.__game.player.mode, performance.now() | 0));
+      for (const ty of ['pointerdown', 'pointerup']) el.addEventListener(ty, e => console.log('C', ty, e.pointerId, e.timeStamp | 0, performance.now() | 0, JSON.stringify(window.__game.touch.debug()))); }
     window.__game.events.on('player:land', () => { if (n++ < 2) setTimeout(tap, 10); });
     tap();
   }, [R.x, R.y]);
-  await page.waitForFunction(s => window.__ev.filter(e => e.type === 'player:jump' && e.t >= s).length >= 3, t, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(s => window.__ev.filter(e => e.type === 'player:jump' && e.t >= s).length >= 3, t, { timeout: 40000 }).catch(() => {});
   await T.up(1);
   const tiers = (await evs(page, 'player:jump', t)).map(e => e.p.tier);
-  ok(tiers.slice(0, 3).join() === '1,2,3', `tap on landing chains jumps: tiers ${tiers.join(',')}`);
+  const dbg = tiers.length < 3 ? JSON.stringify(await page.evaluate(() => ({ t: window.__game.touch.debug(), mode: window.__game.game.mode, hidden: window.__game.touch.el.hidden, p: window.__game.player.mode }))) : '';
+  ok(tiers.slice(0, 3).join() === '1,2,3', `tap on landing chains jumps: tiers ${tiers.join(',')} ${dbg}`);
   await settle(page);
 
   // --- stick held + tap right = jump, NOT pause ---
   await home(page);
   t = await mark(page);
-  await T.down(1, L.x, L.y); await sleep(300);
-  await T.tap(2, R.x, R.y, 50); await sleep(120);
-  await T.up(1); await sleep(60);
+  await T.down(1, L.x, L.y); await T.wait(300);
+  await T.tap(2, R.x, R.y, 50); await T.wait(120);
+  await T.up(1); await T.wait(60);
   const jp = [await count(page, 'player:jump', t), await count(page, 'game:pause', t)];
   ok(jp[0] === 1 && jp[1] === 0, `still left thumb + tap right -> jump in place, no pause (jumps ${jp[0]}, pauses ${jp[1]})`);
   await settle(page);
 
   // --- two-finger tap = pause ---
   t = await mark(page);
-  await T.down(3, R.x, R.y); await sleep(30); await T.down(4, R.x + 90, R.y + 20);
-  await sleep(60); await T.up(3); await sleep(20); await T.up(4);
-  await sleep(120);
+  await T.down(3, R.x, R.y); await T.wait(30); await T.down(4, R.x + 90, R.y + 20);
+  await T.wait(80); await T.upMany([3, 4]);
+  await T.wait(120);
   ok(await count(page, 'game:pause', t) === 1, 'two-finger tap -> game:pause');
   ok(await count(page, 'player:jump', t) === 0, 'two-finger tap does not also jump');
   await page.evaluate(() => window.__game.resume());
-  await sleep(200);
+  await T.wait(200);
   // two fingers but one drags -> no pause
   t = await mark(page);
-  await T.down(3, R.x, R.y); await sleep(20); await T.down(4, W * 0.3, R.y);
-  for (let i = 1; i <= 4; i++) { await sleep(20); await T.move(4, W * 0.3, R.y - i * 10); }
-  await T.up(3); await T.up(4); await sleep(150);
+  await T.down(3, R.x, R.y); await T.wait(20); await T.down(4, W * 0.3, R.y);
+  for (let i = 1; i <= 4; i++) { await T.wait(20); await T.move(4, W * 0.3, R.y - i * 10); }
+  await T.up(3); await T.up(4); await T.wait(150);
   ok(await count(page, 'game:pause', t) === 0, 'two fingers with one moving -> no pause');
   // two-finger, left + right halves
   await settle(page);
   t = await mark(page);
-  await T.down(5, W * 0.25, R.y); await sleep(40); await T.down(6, W * 0.75, R.y);
-  await sleep(70); await T.up(5); await T.up(6); await sleep(120);
+  await T.downMany([[5, W * 0.25, R.y], [6, W * 0.75, R.y]]);
+  await T.wait(90); await T.up(5); await T.wait(15); await T.up(6); await T.wait(120);
   ok(await count(page, 'game:pause', t) === 1, 'two-finger tap across both halves -> game:pause');
   await page.evaluate(() => window.__game.resume());
-  await sleep(200);
+  await T.wait(200);
 
   // --- hybrid device: mouse drag still orbits ---
   y0 = await yaw(page);
   await page.mouse.move(W * 0.7, H * 0.4); await page.mouse.down();
-  for (let i = 1; i <= 8; i++) { await page.mouse.move(W * 0.7 - i * 20, H * 0.4); await sleep(16); }
-  await page.mouse.up(); await sleep(80);
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(W * 0.7 - i * 20, H * 0.4); await T.wait(16); }
+  await page.mouse.up(); await T.wait(80);
   ok(Math.abs(await yaw(page) - y0) > 0.2, `mouse drag orbits on a touch device (Δyaw ${(await yaw(page) - y0).toFixed(2)})`);
 
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
@@ -312,25 +353,30 @@ async function tutorial(browser) {
   const caps = await page.$$eval('#gs-tutorial .gs-cap', n => n.map(x => x.textContent));
   ok(caps.length === 4 && caps.every(c => c.split(/\s+/).length <= 4), `captions: ${caps.join(' | ')}`);
   ok(await page.$$eval('#gs-tutorial .gs-hand', n => n.every(x => getComputedStyle(x).animationName !== 'none')), 'hand glyphs are CSS-animated');
-  await page.evaluate(() => window.__game.touch.showTutorial()); // restart its 1.5 s clock (page setup took a while)
-  const t = await mark(page);
-  await T.tap(2, 800, 400, 40); await sleep(100);
+  // restart its 1.5 s clock and tap at once (page setup on a slow machine can exceed 1.5 s)
+  await page.evaluate(() => {
+    window.__game.touch.showTutorial();
+    const el = document.getElementById('gs-tutorial'), o = { pointerId: 77, pointerType: 'touch', clientX: 500, clientY: 400, bubbles: true };
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new PointerEvent('pointerup', o));
+  });
   ok(await page.isVisible('#gs-tutorial'), 'tap before 1.5 s does not dismiss');
-  ok(await count(page, 'player:jump', t) === 0, 'taps on the tutorial never reach the game');
-  await sleep(1500);
-  await page.screenshot({ path: join(root, 'test/shots/gesture-tutorial.png') });
-  await T.tap(2, 800, 400, 40); await sleep(150);
+  await T.wait(1600);
+  await shot(page, 'test/shots/gesture-tutorial.png');
+  const t = await mark(page);
+  await T.tap(2, 800, 400, 40); await T.wait(300);
   ok(!await page.isVisible('#gs-tutorial'), 'tap after 1.5 s dismisses');
+  ok(await count(page, 'player:jump', t) === 0, 'the dismissing tap does not reach the game');
   ok(await page.evaluate(() => window.__game.state.settings.gestureTutorialSeen === true), 'gestureTutorialSeen persisted in settings');
   await page.evaluate(() => window.__game.touch.showTutorial());
   ok(await page.isVisible('#gs-tutorial'), 'touch.showTutorial() reopens it (Controls card)');
-  await sleep(1600); await T.tap(2, 800, 400, 40); await sleep(100);
+  await T.wait(1600); await T.tap(2, 800, 400, 40); await T.wait(100);
   ok(!await page.isVisible('#gs-tutorial'), 'reopened tutorial dismisses');
   await page.reload();
   await page.waitForFunction(() => window.__game && document.getElementById('btn-play'));
   await page.tap('#btn-play'); await page.tap('#slot-1');
   await page.waitForFunction(() => window.__game.ready === true);
-  await sleep(200);
+  await lowRes(page, true);
+  await T.wait(200);
   ok(!await page.isVisible('#gs-tutorial'), 'not shown again after reload');
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
   await context.close();
@@ -347,9 +393,10 @@ async function launch() {
 
 const browser = await launch();
 try {
-  await tutorial(browser);
-  await run(browser, 'ipad', { width: 1080, height: 810 });
-  await run(browser, 'phone', { width: 844, height: 390 });
+  const only = process.env.ONLY || '';
+  if (!only || only === 'tutorial') await tutorial(browser);
+  if (!only || only === 'ipad') await run(browser, 'ipad', { width: 1080, height: 810 });
+  if (!only || only === 'phone') await run(browser, 'phone', { width: 844, height: 390 });
 } catch (err) {
   failures++; console.error('  ✘ test crashed:', err && err.stack || err);
 } finally {
