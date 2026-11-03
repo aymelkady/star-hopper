@@ -112,3 +112,44 @@ A8 Gamepad: left stick move, A jump, B long jump, X ground pound, right stick ca
 A8b Touch: on an iPad-sized and a phone-sized viewport (Playwright device emulation, hasTouch) the virtual joystick moves Pip, the Jump button jumps, the camera drag orbits, buttons never overlap the HUD or the quest card, and the first tap unlocks audio with no console errors.
 A9 No Nintendo IP: no "Mario", "Peach", "Bowser", "Goomba", "Power Star", mushroom-kingdom music, or 1-up sounds.
 A10 README contains a one-page parent guide.
+
+## 5. Revision 2 (user feedback, 2026-11-03)
+
+### 5.1 Touch is gesture-only (replaces the on-screen Jump / Long / Pound buttons)
+No gameplay buttons on screen. Only the two small system icons (pause, focus) stay top-right.
+
+| Gesture | Where | Action |
+|---|---|---|
+| Touch + drag | left half | Move (invisible dynamic stick; a faint ring + dot fades in while touching, 40% opacity) |
+| Tap (< 180 ms, < 12 px travel) | right half | Jump. Tap again on landing within the combo window = double / triple |
+| Swipe up (≥ 40 px in < 220 ms) | right half | Jump (same as tap; in the air it does nothing, no accidental doubles) |
+| Swipe down | right half, in the air | Ground pound. On the ground: crouch while held |
+| Swipe sideways or diagonal-forward while running | right half | Long jump |
+| Slow drag (speed below swipe threshold) | right half | Camera orbit |
+| Two-finger tap | anywhere | Pause |
+| Touch and hold with the left thumb still, then tap right | — | Jump in place (works because the stick is dead-zoned) |
+
+Rules: swipe vs. drag is decided by velocity at 100 ms after touch-down; once decided it stays that gesture until lift. Every gesture gives instant feedback (a short white streak in the swipe direction, 150 ms). A one-time "How to move" overlay (3 animated hand icons, ≤4 words each) shows on first touch play and is in the Controls card afterwards. Desktop keyboard and gamepad mappings are unchanged.
+
+### 5.2 Graphics bar ("no grey areas, no pale grass")
+- **Palette:** grass is saturated spring green with two-tone vertex-colour variation (base `#58c832`, highlight `#8fe85a`, shadow `#2f9a2a`), earth `#b97a46`, sand `#f3d58a`, stone is warm (`#c9b8a8` light / `#8c7466` shadow), never neutral grey. Sky-tower pillars are painted blue/cream with gold caps; cove cliffs are layered sandstone with green tops.
+- **Horizon:** a ring of low-poly mountains (3 layers, parallax-tinted toward the sky colour with distance), snow caps, a sun disc with a soft glow sprite, 10–14 drifting puffy clouds, distance fog tinted to the sky.
+- **Ground dressing:** flowers (instanced, 4 colours), grass tufts (instanced, already there, recolour), bushes, round trees with 2–3 canopy blobs, rocks with warm colours, a waterfall with animated UV scroll, water plane with gentle vertex waves + fresnel-ish tint.
+- **Light:** warm key light (`#fff2d0`), cool hemisphere (`#bfe4ff` sky / `#6a8f3c` ground), soft shadows, slight rim via a back-light at low intensity. Fake AO: darken vertex colours at the base of walls and under props.
+- **Style:** toon-ish flat shading, consistent chunky proportions, no untextured default-grey material anywhere. A colour audit must list every material in the scene and its hex.
+- Budget unchanged: < 300 draw calls desktop, < 200 mobile, 60 fps on a 2020 iPad.
+
+### 5.3 Focus training as gameplay (not just focus-friendly UI)
+Inspired by the mechanics of attention-training games (target/non-target discrimination, dual tasking, adaptive difficulty) but kept playful and never clinical. All optional stars; all adaptive; all under 90 seconds.
+
+| Challenge | What the kid does | Skill |
+|---|---|---|
+| **Gem Rush** (Go / No-Go) | Blue gems pop up along a path; grab blue, ignore red. Red touched = gentle "oops" buzz, no loss. Score ≥ 80 % → star. Ratio of red decoys and pop speed adapt to the last 10 responses. | Response inhibition |
+| **Freeze!** | While exploring, a whistle + a snowflake icon: stand still for 2 s. Success → coin shower. Random 2–3 times per session. Opt-out in settings. | Impulse control |
+| **Echo Chimes** (already in Towers) | Repeat a growing chime sequence (3 → 6). | Working memory |
+| **Two Things** (dual task) | Ride the log while tapping only when the lantern turns green. | Divided attention |
+| **Spot It** | Among 12 look-alike boxes, find the 3 with a tiny star mark; a soft ping speeds up as you look at the right one (camera-based). | Sustained attention / visual search |
+
+**Focus Meter:** a small sun icon next to the quest card fills while the kid is making progress toward the current objective (moving toward target, collecting objective items, finishing challenges) and slowly drains while wandering with no progress for > 25 s. Full meter = "Focus Burst": 10 s golden trail + coins worth double + a cheerful jingle, then resets. Never shames: the meter only drains, it never shows red or a failure message. Streaks of bursts are celebrated with a toast ("3 bursts today!"), not tracked across days.
+
+Adaptivity: a tiny per-save model (rolling accuracy + reaction time) sets challenge speed in 5 steps. After two failed attempts of any challenge the game offers "Easier" automatically. Every challenge start says the single rule in ≤5 words with an icon, waits for a tap, then counts "3-2-1".
