@@ -153,3 +153,13 @@ Inspired by the mechanics of attention-training games (target/non-target discrim
 **Focus Meter:** a small sun icon next to the quest card fills while the kid is making progress toward the current objective (moving toward target, collecting objective items, finishing challenges) and slowly drains while wandering with no progress for > 25 s. Full meter = "Focus Burst": 10 s golden trail + coins worth double + a cheerful jingle, then resets. Never shames: the meter only drains, it never shows red or a failure message. Streaks of bursts are celebrated with a toast ("3 bursts today!"), not tracked across days.
 
 Adaptivity: a tiny per-save model (rolling accuracy + reaction time) sets challenge speed in 5 steps. After two failed attempts of any challenge the game offers "Easier" automatically. Every challenge start says the single rule in ≤5 words with an icon, waits for a tap, then counts "3-2-1".
+
+### 5.4 Phone HUD declutter (user feedback: "screen is congested on mobile, stats block the gameplay")
+On touch devices (and any viewport ≤ 900 px wide or ≤ 500 px tall):
+- **Always visible:** the quest card (compact: one line, icon + ≤5 words, progress bar as a 3 px underline, distance chip inside the card, Skip as a small chevron) and the star count as a single small chip. Nothing else is permanently on screen.
+- **Appears only on change, then fades (2.5 s):** coins, red coins, lantern/chime counters, zone name (shown as a one-line banner when entering a zone), Focus Meter value (the sun stays as a tiny 28 px icon on the card; the fill is visible on the icon itself).
+- **Break ring:** 32 px, bottom-left on phones, no text until the 5-minute warning; then it shows the minutes.
+- **Pause and focus icons:** 44 px, top-right, 70 % opacity, fully opaque on touch.
+- **Challenge chip:** replaces the quest card content while a challenge runs (no second card).
+- **Total HUD footprint on an 844×390 phone:** ≤ 12 % of the screen area, nothing in the central 60 % of the width below the top 60 px, nothing in the bottom 45 % except the small break ring. A test asserts these boxes.
+- Desktop keeps the full HUD.
