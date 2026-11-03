@@ -31,13 +31,25 @@
  *   race:end          {won, time}
  *   enemy:popped      {id, zone, x,y,z, count, total}
  *   zone:enter        {zone, name}               'hub'|'meadow'|'cove'|'towers'
- *   objective:changed {starId, name, zone, target:{x,y,z}}  (placeholder suggestion; the
- *                                                 objectives system may emit its own)
  *   settings:changed  {key, value, settings}
  *   save:written      {slot, reason}
  *   input:focus       {}                          F / gamepad Back pressed (focus mode toggle)
  *   ui:toast          {text}                      ask the HUD to show a short popup
  *   tick              {dt, t}                     once per rendered frame (dt in s, unscaled)
+ *
+ * UI / SYSTEMS EVENTS (emitted by systems/* and ui/*; audio + fx subscribe):
+ *   objective:changed {starId, name, zone, target:{x,y,z}|null}   the ONE current goal changed
+ *                                                 (systems/objectives.js is the only emitter;
+ *                                                 starId null = all stars found)
+ *   objective:skipped {starId, next}              player skipped a goal (Skip ›, Tab, pause menu)
+ *   ui:celebrate      {kind:'star', id, name, count, total}  star celebration card (2.5 s)
+ *                     {kind:'quest', count, total}           Today's Quest done ("Great session!")
+ *   ui:warn           {minutes, text}             break timer: minutes = 5 or 1 left
+ *   break:start       {minutes, prompts:[...]}    stretch-break card shown (game paused + saved)
+ *   break:end         {action:'play'|'stop'}      stretch break finished
+ *   focus:changed     {on}                        focus mode effective state (lower music when on)
+ *   settings:changed  (see above) keys set by ui/settings.js: breakMinutes, helperMode, focusMode,
+ *                     reduceMotion, cameraSpeed, invertY, masterVolume ("Sound"), musicVolume, haptics
  */
 export function createEvents() {
   const map = new Map();

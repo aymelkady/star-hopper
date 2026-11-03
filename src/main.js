@@ -84,7 +84,6 @@ function startGame(slot) {
   ctrl.frozen = false;
   events.emit('game:start', { slot });
   checkZone(true);
-  updateObjective(true);
   window.__game.ready = true;
 }
 function pause() {
@@ -95,7 +94,7 @@ function pause() {
   events.emit('game:pause', {});
 }
 function resume() {
-  if (game.mode !== 'paused') return;
+  if (game.mode !== 'paused' || menus.locked) return; // locked = stretch break / quest card
   game.mode = 'playing'; menus.hide(); input.setEnabled(true); touch.show(true); game.acc = 0;
   events.emit('game:resume', {});
 }
@@ -136,15 +135,7 @@ function checkZone(force) {
     events.emit('zone:enter', { zone: z, name: world.zoneName(z) });
   }
 }
-function updateObjective(force) {
-  const s = world.nextStar();
-  const id = s ? s.id : null;
-  if (!force && id === game.objective) return;
-  game.objective = id;
-  events.emit('objective:changed', s ? { starId: s.id, name: s.name, zone: s.zone, target: world.objectiveTarget(s, ctrl.position) } : { starId: null, name: 'All stars found!', zone: null, target: null });
-}
-events.on('pickup:star', () => updateObjective(false));
-events.on('star:revealed', () => updateObjective(true));
+// The current objective (game.objective = star id) is owned by systems/objectives.js.
 events.on('checkpoint:reached', () => { ctrl.bonks = 0; });
 
 // HUD buttons (tap targets for mobile; also clickable on desktop)

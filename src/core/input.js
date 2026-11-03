@@ -8,8 +8,9 @@
  *   jump:{pressed,held,released}     Space / gamepad A
  *   longJump:{pressed,held}          Shift / gamepad B
  *   pound:{pressed,held}             E (in the air), X, C, Ctrl / gamepad X
+ *   crouch:{held}         touch only: swipe down on the ground, held until lift
  *   camera:{x,y}          -1..1 orbit rate: Q/E, arrow keys (when WASD moves), right stick
- *   pause:{pressed}       Esc / P / gamepad Start
+ *   pause:{pressed}       Esc / P / gamepad Start / two-finger tap
  *   focus:{pressed}       F / gamepad Back(View)
  *   camReset:{pressed}    R / gamepad Y / right-stick click
  *   nav:{up,down,left,right,confirm,back}  gamepad menu navigation edges
@@ -36,6 +37,7 @@ export function createInput(target = window, canvas = null, touch = null) {
     jump: { pressed: false, held: false, released: false },
     longJump: { pressed: false, held: false },
     pound: { pressed: false, held: false },
+    crouch: { held: false },
     camera: { x: 0, y: 0 },
     pause: { pressed: false },
     focus: { pressed: false },
@@ -163,12 +165,17 @@ export function createInput(target = window, canvas = null, touch = null) {
       prevPad.sUp = sUp; prevPad.sDown = sDown;
     } else prevPad = {};
 
+    let crouchHeld = false;
     if (touch) {
+      // gesture layer (touch.js): edges are latched there until this step consumes them
+      if (touch.setContext) touch.setContext(ctx);
       const ts = touch.state, tl = touch.takeLatch();
-      if (ts.mx || ts.my || tl.jump || tl.longJump || tl.pound) actions.device = 'touch';
+      if (ts.mx || ts.my || tl.jump || tl.longJump || tl.pound || tl.pause || ts.crouchHeld) actions.device = 'touch';
       mx += ts.mx; my += ts.my;
       jumpHeld = jumpHeld || ts.jumpHeld; longHeld = longHeld || ts.longHeld; poundHeld = poundHeld || ts.poundHeld;
       jumpPressed = jumpPressed || tl.jump; longPressed = longPressed || tl.longJump; poundPressed = poundPressed || tl.pound;
+      pausePressed = pausePressed || !!tl.pause;
+      crouchHeld = !!ts.crouchHeld;
     }
     const ml = Math.hypot(mx, my);
     if (ml > 1) { mx /= ml; my /= ml; }
@@ -181,6 +188,7 @@ export function createInput(target = window, canvas = null, touch = null) {
     prevJumpHeld = jumpHeld && enabled;
     actions.longJump.pressed = enabled && longPressed; actions.longJump.held = enabled && longHeld;
     actions.pound.pressed = enabled && poundPressed; actions.pound.held = enabled && poundHeld;
+    actions.crouch.held = enabled && crouchHeld;
     actions.pause.pressed = pausePressed;
     actions.focus.pressed = focusPressed;
     actions.camReset.pressed = enabled && resetPressed;

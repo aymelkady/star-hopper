@@ -18,6 +18,9 @@ import * as towers from './zones/towers.js';
 export const STAR_ORDER = ['meadow-1', 'meadow-2', 'meadow-3', 'cove-1', 'meadow-4', 'cove-2', 'cove-3',
   'towers-1', 'towers-2', 'towers-3', 'towers-4', 'cove-4', 'bonus-meadow', 'bonus-cove', 'bonus-towers'];
 
+// Where each zone's path leaves the Treehouse Hub (wayfinding target while Pip is in another zone).
+export const ZONE_ENTRANCES = { meadow: { x: -27, z: 4 }, cove: { x: 27, z: 2 }, towers: { x: 0, z: -28 } };
+
 export function createWorld({ scene, events, state, mobile = false }) {
   setSeed(20261103);
   const col = new CollisionWorld(8);
@@ -129,6 +132,11 @@ export function createWorld({ scene, events, state, mobile = false }) {
     findPickup(id) { return P.coinById.get(id) || P.starById.get(id) || null; },
     coinCounts() { const o = {}; for (const c of P.coins) o[c.zone] = (o[c.zone] || 0) + c.value; return o; },
     setStill(v) { P.still = !!v; },
+    zoneEntrances: ZONE_ENTRANCES,
+    zoneEntrance(zone) {
+      const e = ZONE_ENTRANCES[zone]; if (!e) return null;
+      return { x: e.x, y: col.groundHeight(e.x, e.z, 40) + 0.2, z: e.z };
+    },
   };
   return world;
 }

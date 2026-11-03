@@ -12,14 +12,16 @@ no game-over), and has a built-in break timer.
 
 ## Set it up once (2 minutes)
 1. Open the game, press **Play**, pick a save slot (there are three, one per child).
-2. Press **Esc** → **Settings**:
+2. Press **Esc** (or the ❚❚ button) → **⚙ Settings**. Settings are also on the title screen (⚙).
+   The **Parents** part of the screen has:
    - **Session length**: 10 / 15 / 20 / 30 minutes. The timer ring in the corner shows time left.
      The game warns at 5 min and 1 min, then shows a 60-second stretch-break screen.
    - **Helper mode** (on by default): more forgiving jumps and a coin magnet. Turn off for
      kids who want "Pro mode".
    - **Focus mode** (F key): dims everything except Pip, the path, and the current goal.
      Try it if your child gets pulled toward side details.
-   - **Sound / music** sliders.
+   - **Sound / music** sliders, **Reduce motion**, **Camera speed**, **Invert camera**, and
+     **Buzz** (vibration on tablets/phones).
 3. Agree on the rule out loud: *"When the stretch screen shows, we stop or we take the break."*
 
 ## Using it well
@@ -28,8 +30,8 @@ no game-over), and has a built-in break timer.
 - **Transitions.** The 5-minute and 1-minute warnings are on screen and in sound. Repeat them
   out loud once; do not add more warnings than that.
 - **Frustration.** Falling costs nothing (back at the last flag in one second, coins kept).
-  If a star is too hard, the quest card can be skipped with **Tab** and the game picks the
-  next one. Nothing is locked.
+  If a star is too hard, tap **Skip ›** on the quest card (or press **Tab**, or Pause → Skip goal)
+  and the game picks the next one. Nothing is locked.
 - **Movement.** The stretch-break screen suggests three quick movements. Hyperactive kids
   often come back more settled after actually doing them.
 - **Save & stop** is in the pause menu. It always saves. Closing the tab also keeps progress.
@@ -42,9 +44,9 @@ no game-over), and has a built-in break timer.
 | Long jump (while running) | **B** button | Shift + Space | B |
 | Ground pound (in the air) | **X** button | E | X |
 | Camera | Drag with right thumb | Q / E, or drag mouse | Right stick |
-| Focus mode | Eye icon | F | — |
+| Focus mode | Eye icon | F | Back / View |
 | Pause / Settings | ❚❚ icon | Esc | Start |
-| Skip current goal | Quest card → Skip | Tab | Back |
+| Skip current goal | Quest card → Skip | Tab | Pause menu → Skip goal |
 
 ## Honest limits
 - This is a game, not a treatment. It borrows design ideas from the research on attention and

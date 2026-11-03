@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS = {
   breakMinutes: 20,
   focusMode: false,
   reduceMotion: false,
+  haptics: true,          // touch-button vibration (navigator.vibrate)
 };
 
 function store() {
