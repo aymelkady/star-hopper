@@ -352,7 +352,7 @@ async function questCardLayout(page, name, viewport) {
 
 // §5.4 compact HUD: union of all visible HUD boxes <= 12 % of the screen, nothing in the central
 // 60 % of the width below the top 60 px, nothing in the bottom 45 % except the break ring.
-const hudBoxes = page => page.evaluate(() => {
+const hudBoxes = (page, controls = false) => page.evaluate(controls => {
   const vis = e => { // rendered, not transparent (opacity through the ancestors), not visibility:hidden
     if (!e.getClientRects().length) return false;
     const cs = getComputedStyle(e); if (cs.visibility !== 'visible') return false;
@@ -360,11 +360,12 @@ const hudBoxes = page => page.evaluate(() => {
     return true;
   };
   const skip = new Set(['hud', 'fp-layer']);
-  const els = [...document.querySelectorAll('#hud *, #quest-card, #quest-card *, #toast, #fp-layer *, #rotate-hint')]
+  const els = [...document.querySelectorAll(controls ? '#gs-jump, #gs-stick .gs-ring' : '#hud *, #quest-card, #quest-card *, #toast, #fp-layer *, #rotate-hint')]
     .filter(e => !skip.has(e.id) && !e.classList.contains('hud-left') && !e.classList.contains('hud-right') && !(e.closest('svg') && e.tagName !== 'svg') && vis(e));
-  return els.map(e => { const r = e.getBoundingClientRect(); return { id: e.id || e.className.baseVal || e.className || e.tagName, l: r.left, t: r.top, r: r.right, b: r.bottom, ring: !!e.closest('#break-ring') }; })
+  return els.map(e => { const r = e.getBoundingClientRect(); return { id: e.id || e.className.baseVal || e.className || e.tagName, l: r.left, t: r.top, r: r.right, b: r.bottom, ring: !!e.closest('#break-ring'),
+    control: !!e.closest('#touch-controls') }; })
     .filter(b => b.r > b.l && b.b > b.t);
-});
+}, controls);
 function unionArea(boxes, W, H) { // exact area of a union of rectangles (coordinate compression)
   const cl = b => ({ l: Math.max(0, b.l), t: Math.max(0, b.t), r: Math.min(W, b.r), b: Math.min(H, b.b) });
   const bs = boxes.map(cl).filter(b => b.r > b.l && b.b > b.t);
@@ -394,6 +395,21 @@ async function hudFootprint(page, name, viewport) {
   ok(centre.length === 0, `${name}: nothing in x 20-80 % below the top 60 px${centre.length ? ' (' + centre.map(b => `${b.id}@${Math.round(b.l)},${Math.round(b.t)}`).join(' ') + ')' : ''}`);
   const low = boxes.filter(b => b.b > H * 0.55 && !b.ring);
   ok(low.length === 0, `${name}: nothing in the bottom 45 % except the break ring${low.length ? ' (' + low.map(b => b.id).join(' ') + ')' : ''}`);
+  // §5.5 Simple layout: the Jump button + the stick's resting ring are the only other things allowed
+  // in the bottom 45 %; they sit in the outer 20 % columns, never on the break ring or the quest card
+  const ctl = await hudBoxes(page, true), simpleMode = await page.evaluate(() => window.__game.state.settings.moveMode !== 'pro');
+  if (simpleMode) {
+    const ids = ctl.map(b => b.id).sort().join(',');
+    ok(ctl.length === 2 && /gs-jump/.test(ids) && /gs-ring/.test(ids), `${name}: Simple controls at rest = Jump button + stick ring (${ids})`);
+    const ringBox = boxes.find(b => b.ring && b.id === 'break-ring') || boxes.find(b => b.ring);
+    const hit = (a, b) => a && b && !(a.r <= b.l || b.r <= a.l || a.b <= b.t || b.b <= a.t);
+    const qc = boxes.filter(b => /quest-card|qc-/.test(String(b.id)));
+    ok(ctl.every(b => b.t >= H * 0.55 - 1 && (b.r <= W * 0.2 + 1 || b.l >= W * 0.8 - 1)), `${name}: Jump button + stick ring sit in the bottom 45 %, outer columns (${ctl.map(b => `${b.id}@${Math.round(b.l)},${Math.round(b.t)}-${Math.round(b.r)},${Math.round(b.b)}`).join(' ')})`);
+    ok(ctl.every(b => !hit(b, ringBox)) && ctl.every(b => !qc.some(q => hit(b, q))), `${name}: Jump button / stick ring overlap neither the break ring nor the quest card`);
+    const ctlPct = 100 * unionArea(ctl, W, H) / (W * H);
+    ok(ctlPct <= 8, `${name}: Simple controls at rest cover ${ctlPct.toFixed(2)} % of the screen (<= 8 %)`);
+    footprints[name + '+controls'] = +(100 * unionArea([...boxes, ...ctl], W, H) / (W * H)).toFixed(2);
+  } else ok(ctl.length === 0, `${name}: Pro layout has no on-screen controls at rest (${ctl.map(b => b.id)})`);
   const persistent = await page.evaluate(() => [...document.querySelectorAll('.hud-left > *')].filter(e => e.offsetParent && getComputedStyle(e).opacity !== '0').map(e => e.id));
   ok(persistent.join() === 'hud-stars', `${name}: only the star chip stays on the left (${persistent.join(',')})`);
   const sizes = await page.evaluate(() => {
@@ -423,7 +439,7 @@ async function hudFootprint(page, name, viewport) {
 }
 
 async function touchPass(browser, name, viewport) {
-  console.log(`Touch pass: ${name} (${viewport.width}x${viewport.height}, gestures only)`);
+  console.log(`Touch pass: ${name} (${viewport.width}x${viewport.height}, Simple layout: stick + Jump button + gestures)`);
   const { context, page, errors } = await openPage(browser, { viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
   const sleep = ms => page.waitForTimeout(ms);
   await page.tap('#btn-play');
@@ -432,7 +448,11 @@ async function touchPass(browser, name, viewport) {
   await page.waitForFunction(() => window.__game.ready === true, null, { timeout: 15000 });
   ok(await page.isVisible('#touch-controls'), '#touch-controls visible');
   const gone = await page.evaluate(() => ['#touch-jump', '#touch-long', '#touch-pound'].filter(s => document.querySelector(s)));
-  ok(gone.length === 0, `Jump / Long / Pound buttons removed (${gone.join(',') || 'none left'})`);
+  ok(gone.length === 0, `old Jump / Long / Pound buttons removed (${gone.join(',') || 'none left'})`);
+  ok(await page.evaluate(() => window.__game.state.settings.moveMode) === 'simple', 'new player: moveMode is Simple by default');
+  const jb = await page.evaluate(() => { const b = document.getElementById('gs-jump'), r = b.getBoundingClientRect(), cs = getComputedStyle(b);
+    return { vis: !!b.offsetParent && cs.display !== 'none', w: r.width, h: r.height, op: +cs.opacity, right: innerWidth - r.right, bottom: innerHeight - r.bottom, txt: b.textContent }; });
+  ok(jb.vis && jb.w === 88 && jb.h === 88 && Math.abs(jb.op - 0.55) < 0.01 && jb.bottom >= 16 && jb.txt === '⬆', `Simple: round Jump button visible bottom-right (${JSON.stringify(jb)})`);
 
   // CDP touch with explicit timestamps from a virtual clock (advanced by wait()): the gesture
   // recogniser reads event.timeStamp, so a slow software-GL frame can't stretch a tap into a hold.
@@ -453,6 +473,8 @@ async function touchPass(browser, name, viewport) {
 
   // first touch play: the "How to move" overlay; dismissed by a tap after 1.5 s
   ok(await page.isVisible('#gs-tutorial'), 'first touch play shows the gesture tutorial');
+  const caps = await page.$$eval('#gs-tutorial .gs-cap', n => n.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+  ok(caps.length === 3 && /move/.test(caps[0]) && /⬆/.test(caps[1]) && /double jump/.test(caps[2]), `Simple tutorial: 3 cards (${caps.join(' | ')})`);
   await wait(1600);
   await down(9, viewport.width / 2, viewport.height / 2); await wait(40); await up(9);
   await wait(150);
@@ -466,7 +488,11 @@ async function touchPass(browser, name, viewport) {
   const p0 = await pos(page);
   await down(1, L.x, L.y);
   for (let i = 1; i <= 6; i++) { await move(1, L.x, L.y - i * 12); await wait(16); }
+  const stick = await page.evaluate(() => { const s = document.getElementById('gs-stick'), r = s.querySelector('.gs-ring').getBoundingClientRect(), k = s.querySelector('.gs-dot').getBoundingClientRect();
+    return { on: s.classList.contains('on'), op: +getComputedStyle(s).opacity, ring: Math.round(r.width), knob: Math.round(k.width), cx: (r.left + r.right) / 2, cy: (r.top + r.bottom) / 2 }; });
+  ok(stick.on && stick.op > 0.5 && stick.ring === 110 && stick.knob === 50 && Math.abs(stick.cx - L.x) < 2 && Math.abs(stick.cy - L.y) < 2, `Simple: stick ring visible while dragging, where the thumb landed (${JSON.stringify(stick)})`);
   await page.waitForFunction(p => Math.hypot(window.__game.player.position.x - p.x, window.__game.player.position.z - p.z) >= 6, p0, { timeout: 8000 }).catch(() => {});
+  await page.screenshot({ path: join(root, `test/shots/simple-${name}.png`) });
   await up(1); await wait(300);
   const p1 = await pos(page);
   ok(dist(p0, p1) >= 5, `drag on the left half moved Pip (${dist(p0, p1).toFixed(2)} m)`);
@@ -477,10 +503,30 @@ async function touchPass(browser, name, viewport) {
   await down(2, R.x, R.y); await wait(50); await up(2);
   await page.waitForFunction(s => window.__game.log.some(e => e.type === 'player:jump' && e.t >= s), t, { timeout: 4000 }).catch(() => {});
   ok(await logHas(page, 'player:jump', t), 'tap on the right half -> player:jump');
+  await grounded(); await wait(200);
+
+  // Jump button tap = jump (pressed state while the finger is down)
+  const JB = await page.evaluate(() => { const r = document.getElementById('gs-jump').getBoundingClientRect(); return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 }; });
+  t = await nowT(page);
+  await down(6, JB.x, JB.y); await wait(30);
+  const pressed = await page.evaluate(() => document.getElementById('gs-jump').classList.contains('pressed'));
+  await wait(30); await up(6);
+  await page.waitForFunction(s => window.__game.log.some(e => e.type === 'player:jump' && e.t >= s), t, { timeout: 4000 }).catch(() => {});
+  ok(pressed && await logHas(page, 'player:jump', t), `Jump button tap -> player:jump (pressed state ${pressed})`);
+  ok(await page.evaluate(() => !document.getElementById('gs-jump').classList.contains('pressed')), 'Jump button pressed state clears on lift');
+  // second tap on the button while airborne = air double jump
+  await page.waitForFunction(() => !window.__game.player.grounded && window.__game.player.velocity.y < 2, null, { timeout: 3000 }).catch(() => {});
+  t = await nowT(page);
+  await down(6, JB.x, JB.y); await wait(40); await up(6);
+  await page.waitForFunction(s => window.__game.log.some(e => e.type === 'player:airjump' && e.t >= s), t, { timeout: 3000 }).catch(() => {});
+  ok(await logHas(page, 'player:airjump', t), 'Jump button again in the air -> air double jump');
   await grounded();
 
   // swipe down in the air = ground pound
   // (slow time while airborne so the fall outlasts the swipe on a slow software-GL machine)
+  // (from the open spawn lawn: Simple's faster run + jumps can leave Pip under a tree canopy)
+  await page.evaluate(() => { const g = window.__game, sp = g.world.respawnPoint(); g.player.teleport(sp.x, sp.y, sp.z, 0); g.camera.snap(g.player.position, 0); });
+  await grounded(); await wait(100);
   await page.evaluate(() => { const g = window.__game, p = g.player.position; g.setTimeScale(0.15); g.player.teleport(p.x, p.y + 7, p.z); g.player.sinceGround = 9; });
   await wait(60);
   t = await nowT(page);
@@ -488,7 +534,8 @@ async function touchPass(browser, name, viewport) {
   await page.waitForFunction(s => window.__game.log.some(e => e.type === 'player:poundstart' && e.t >= s), t, { timeout: 6000 }).catch(() => {});
   await page.evaluate(() => window.__game.setTimeScale(1));
   await page.waitForFunction(s => window.__game.log.some(e => e.type === 'player:groundpound' && e.t >= s), t, { timeout: 6000 }).catch(() => {});
-  ok(await logHas(page, 'player:groundpound', t), 'swipe down while airborne -> player:groundpound');
+  const gpDbg = await page.evaluate(s => JSON.stringify({ ev: window.__game.log.filter(e => e.t >= s && /^player|^input/.test(e.type)).map(e => e.type), p: window.__game.player.mode, y: +window.__game.player.position.y.toFixed(2), t: window.__game.touch.debug() }), t);
+  ok(await logHas(page, 'player:groundpound', t), `swipe down while airborne -> player:groundpound${await logHas(page, 'player:groundpound', t) ? '' : ' ' + gpDbg}`);
   await grounded(); await wait(300);
 
   // swipe sideways while running = long jump (from the spawn, facing its open lawn)
@@ -557,6 +604,14 @@ async function touchPass(browser, name, viewport) {
     await page.tap('#btn-settings-back');
     ok(await page.isVisible('#btn-resume'), 'iPad: tap on Back returns to the pause menu');
   }
+  // Pro layout: gesture-only, no Jump button, half-screen stick zone
+  await page.evaluate(() => window.__game.state.setSetting('moveMode', 'pro'));
+  await page.waitForTimeout(100);
+  const proUi = await page.evaluate(() => ({ btn: getComputedStyle(document.getElementById('gs-jump')).display, simple: window.__game.touch.simple, cls: document.getElementById('touch-controls').classList.contains('simple') }));
+  ok(proUi.btn === 'none' && proUi.simple === false && !proUi.cls, `Pro: Jump button hidden, gesture-only layout (${JSON.stringify(proUi)})`);
+  await page.evaluate(() => window.__game.state.setSetting('moveMode', 'simple'));
+  await page.waitForTimeout(100);
+  ok(await page.evaluate(() => getComputedStyle(document.getElementById('gs-jump')).display !== 'none'), 'back to Simple: Jump button shows again');
   if (name === 'phone') { // §5.4: a running challenge's chip takes the quest card's exact slot (nothing jumps)
     await page.evaluate(() => { if (window.__game.game.mode !== 'playing') window.__game.resume(); });
     await page.waitForTimeout(200);
@@ -585,8 +640,8 @@ async function launch() {
 
 const browser = await launch();
 try {
-  await desktopPass(browser);
-  await regressionPass(browser);
+  if (!process.env.ONLY_TOUCH) { await desktopPass(browser);
+  await regressionPass(browser); }
   await touchPass(browser, 'ipad', { width: 1080, height: 810 });
   await touchPass(browser, 'phone', { width: 844, height: 390 });
 } catch (err) {

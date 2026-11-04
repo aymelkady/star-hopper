@@ -54,6 +54,13 @@ export const CAM = {
   occMaxRadius: 8,           // only meshes smaller than this (bounding sphere) are faded
   occRefresh: 1.5,           // s between scene scans for occluder candidates
 };
+// Simple movement mode (settings.moveMode, DESIGN.md §5.5): a calmer, slightly wider follow cam.
+export const CAM_SIMPLE = {
+  dist: 7.0,                 // boom length (camera ~2.2 m above the focus, ~3.3 m above the feet)
+  pitch: 18 * DEG,
+  autoRateScale: 0.8,        // auto-rotate 20 % calmer
+};
+const simpleMode = s => !s || s.moveMode !== 'pro';
 
 // ---------- faders ----------
 // def: {name, object, start, end, min, mode:'point'|'box', point?(out) -> Vector3, occlude?, large?,
@@ -167,9 +174,14 @@ export function createCameraRig(camera, col, getSettings) {
   const expK = (rate, dt) => 1 - Math.exp(-rate * dt);
   const clampPitch = p => Math.max(CAM.minPitch, Math.min(CAM.maxPitch, p));
 
+  // default boom + pitch for the current movement mode
+  const basePitch = () => (simpleMode(getSettings()) ? CAM_SIMPLE.pitch : CAM.pitch);
+  const applyMode = () => { rig.dist = simpleMode(getSettings()) ? CAM_SIMPLE.dist : CAM.dist; };
+  rig.basePitch = basePitch;
   rig.snap = (pos, facing) => {
+    applyMode();
     rig.yaw = (facing ?? 0) + Math.PI; // behind Pip
-    rig.pitch = CAM.pitch; focus.set(pos.x, pos.y + CAM.focusHeight, pos.z); groundY = pos.y;
+    rig.pitch = basePitch(); focus.set(pos.x, pos.y + CAM.focusHeight, pos.z); groundY = pos.y;
     pipPos.copy(pos);
     rig.curDist = rig.dist; rig.idle = 9; rig.lift = 0; rig.under = 0; rig.targetYaw = undefined;
     place(1e9, true);
@@ -238,8 +250,10 @@ export function createCameraRig(camera, col, getSettings) {
     } else rig.swingDir = 0;
     if (free0 < Math.min(CAM.minDist, baseDist - 0.05)) {
       let best = 0, bestFree = free0;
-      targetLift = CAM.wallLiftMax;
-      for (let l = CAM.wallLiftStep; l <= CAM.wallLiftMax + 1e-6; l += CAM.wallLiftStep) {
+      // search up to the same absolute pitch whatever the mode's default pitch (Simple starts lower)
+      const liftMax = Math.ceil(Math.max(CAM.wallLiftMax, CAM.pitch + CAM.wallLiftMax - basePitch) / CAM.wallLiftStep - 1e-6) * CAM.wallLiftStep;
+      targetLift = liftMax;
+      for (let l = CAM.wallLiftStep; l <= liftMax + 1e-6; l += CAM.wallLiftStep) {
         const p = Math.min(basePitch + l, CAM.maxPitch + 0.35);
         const fr = freeDist(p, baseDist);
         if (fr >= CAM.minDist) { targetLift = l; best = -1; break; }
@@ -300,6 +314,7 @@ export function createCameraRig(camera, col, getSettings) {
   rig.update = (dt, ctrl, renderPos, camIn, mouse) => {
     const s = getSettings();
     rig.mode = 'follow';
+    applyMode();
     const inv = s.invertY ? -1 : 1, spd = s.cameraSpeed || 1;
     pipPos.copy(renderPos);
     rig.speed = Math.hypot(ctrl.velocity.x, ctrl.velocity.z);
@@ -345,11 +360,11 @@ export function createCameraRig(camera, col, getSettings) {
         const desired = Math.atan2(-vx, -vz);
         const d = Math.atan2(Math.sin(desired - rig.yaw), Math.cos(desired - rig.yaw));
         if (Math.abs(d) < 2.6) { // running straight at the camera: leave it alone
-          const k = CAM.autoRate * (s.helperMode !== false ? 1 : 0.6) * Math.min(1, hs / 9);
+          const k = CAM.autoRate * (s.helperMode !== false ? 1 : 0.6) * (simpleMode(s) ? CAM_SIMPLE.autoRateScale : 1) * Math.min(1, hs / 9);
           rig.yaw += d * expK(k, dt);
         }
       }
-      if (rig.idle > CAM.autoDelay + 1) rig.pitch += (CAM.pitch - rig.pitch) * expK(CAM.pitchReturn, dt);
+      if (rig.idle > CAM.autoDelay + 1) rig.pitch += (basePitch() - rig.pitch) * expK(CAM.pitchReturn, dt);
     }
     place(dt);
     occTargets[0].set(renderPos.x, renderPos.y + 0.72, renderPos.z);  // body

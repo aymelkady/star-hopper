@@ -14,17 +14,30 @@ const fmtTime = s => { const m = Math.floor(s / 60); return m < 60 ? `${m} min` 
 export const PIP_ICON = `<svg class="pip-ico" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 14 L11 2 L18 10 Z M32 14 L29 2 L22 10 Z" fill="#ff8a1f" stroke="#1d1530" stroke-width="2" stroke-linejoin="round"/><circle cx="20" cy="22" r="15" fill="#ff8a1f" stroke="#1d1530" stroke-width="2.5"/><ellipse cx="20" cy="28" rx="9" ry="6" fill="#fff1d6"/><circle cx="14.5" cy="20" r="4" fill="#fff"/><circle cx="25.5" cy="20" r="4" fill="#fff"/><circle cx="15" cy="20.5" r="2.2" fill="#2b2340"/><circle cx="25" cy="20.5" r="2.2" fill="#2b2340"/><circle cx="20" cy="26" r="1.6" fill="#2b2340"/></svg>`;
 
 // Exact mapping, kept in sync with docs/PARENT-GUIDE.md, README.md and GESTURE_HELP in core/touch.js.
-const CONTROLS = [
-  // [label, touch, keyboard, gamepad]
-  ['🏃 Move', 'Drag left side', '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows', 'Left stick'],
-  ['⬆ Jump', 'Tap right side', '<kbd>Space</kbd>', 'A'],
+// Two sets: Simple (default, Roblox-like: Jump button, air double jump) and Pro (gesture-only, timed combo).
+const CONTROLS_COMMON_TAIL = [
   ['➜ Long jump', 'Run, swipe sideways', '<kbd>Shift</kbd> + <kbd>Space</kbd>', 'B'],
   ['⬇ Pound', 'Swipe down in air', '<kbd>E</kbd> / <kbd>X</kbd> in air', 'X'],
-  ['🎥 Camera', 'Slow drag right side', '<kbd>Q</kbd> <kbd>E</kbd> / mouse drag', 'Right stick'],
   ['👁 Focus', 'Eye button', '<kbd>F</kbd>', 'Back'],
   ['❚❚ Pause', 'Two-finger tap', '<kbd>Esc</kbd>', 'Start'],
   ['⏭ Skip goal', 'Quest card: Skip', '<kbd>Tab</kbd>', 'Pause menu'],
 ];
+const CONTROLS_SIMPLE = [
+  // [label, touch, keyboard, gamepad]
+  ['🏃 Move', 'Drag left side', '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows', 'Left stick'],
+  ['⬆ Jump', 'Tap ⬆ button', '<kbd>Space</kbd>', 'A'],
+  ['⭐ Double jump', 'Tap ⬆ in air', '<kbd>Space</kbd> in air', 'A in air'],
+  ['🎥 Camera', 'Drag right side', '<kbd>Q</kbd> <kbd>E</kbd> / mouse drag', 'Right stick'],
+  ...CONTROLS_COMMON_TAIL,
+];
+const CONTROLS_PRO = [
+  ['🏃 Move', 'Drag left side', '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows', 'Left stick'],
+  ['⬆ Jump', 'Tap right side', '<kbd>Space</kbd>', 'A'],
+  ['⭐ Double jump', 'Tap on landing', '<kbd>Space</kbd> on landing', 'A on landing'],
+  ['🎥 Camera', 'Slow drag right side', '<kbd>Q</kbd> <kbd>E</kbd> / mouse drag', 'Right stick'],
+  ...CONTROLS_COMMON_TAIL,
+];
+export const controlsFor = mode => (mode === 'pro' ? CONTROLS_PRO : CONTROLS_SIMPLE);
 
 export function createMenus({ state, onPlay, onResume, onSaveStop, isTouch }) {
   const root = document.getElementById('overlay');
@@ -117,8 +130,10 @@ export function createMenus({ state, onPlay, onResume, onSaveStop, isTouch }) {
     screen = 'controls';
     const cols = isTouch ? ['👆 Touch'] : ['⌨ Keyboard', '🎮 Gamepad'];
     const cells = r => (isTouch ? [r[1]] : [r[2], r[3]]).map(c => `<span>${c}</span>`).join('');
+    const pro = state && state.settings && state.settings.moveMode === 'pro';
+    const CONTROLS = controlsFor(pro ? 'pro' : 'simple');
     render(`<div class="menu controls" role="dialog" aria-label="Controls">
-      <h2>🎮 Controls</h2>
+      <h2>🎮 Controls <small class="ctl-mode">${pro ? 'Pro' : 'Simple'}</small></h2>
       <div class="controls-grid ${isTouch ? 'touch' : ''}">
         <span class="h"></span>${cols.map(c => `<span class="h">${c}</span>`).join('')}
         ${CONTROLS.map(r => `<span class="act">${r[0]}</span>${cells(r)}`).join('')}

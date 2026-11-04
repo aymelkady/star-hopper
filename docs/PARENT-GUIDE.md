@@ -16,8 +16,14 @@ no game-over), and has a built-in break timer.
    The **Parents** part of the screen has:
    - **Session length**: 10 / 15 / 20 / 30 minutes. The timer ring in the corner shows time left.
      The game warns at 5 min and 1 min, then shows a 60-second stretch-break screen.
+   - **🎮 Controls: Simple / Pro** (top of the list; **Simple** is the default). Simple plays
+     like Roblox: steady speed, instant stop, one jump button plus a double jump in the air,
+     and auto-jump onto small ledges on tablets. Pro is the trickier original style (speed
+     build-up, hold for higher jumps, timed triple jump) for kids who want a challenge.
+   - **Auto-jump** (tablets / phones, Simple only, on by default): walking into a knee-high
+     ledge hops up it automatically.
    - **Helper mode** (on by default): more forgiving jumps and a coin magnet. Turn off for
-     kids who want "Pro mode".
+     an extra challenge.
    - **Focus mode** (F key): dims everything except Pip, the path, and the current goal.
      Try it if your child gets pulled toward side details.
    - **Sound / music** sliders, **Reduce motion**, **Camera speed**, **Invert camera**, and
@@ -44,14 +50,18 @@ no game-over), and has a built-in break timer.
 - **Save & stop** is in the pause menu. It always saves. Closing the tab also keeps progress.
 
 ## Controls
+Shown for the default **Simple** style. In **Pro** there is no Jump button on touch: tap the right side to jump.
+
 | Action | Touch (iPad / Android) | Keyboard | Gamepad |
 |---|---|---|---|
-| Move | Drag on the left side | W A S D or arrows | Left stick |
-| Jump (tap again on landing for higher jumps) | Tap the right side | Space | A |
+| Move | Drag on the left side (a joystick appears) | W A S D or arrows | Left stick |
+| Jump | Tap the round **⬆** button (bottom right) or the right side | Space | A |
+| Double jump (Simple) | Tap **⬆** again in the air | Space again in the air | A again in the air |
+| Double / triple jump (Pro) | Tap the right side again just as Pip lands | Space on landing | A on landing |
 | Long jump (while running) | Swipe sideways | Shift + Space | B |
 | Ground pound (in the air) | Swipe down | E | X |
 | Crouch (crouch + jump = backflip) | Swipe down and hold | hold C or Ctrl | hold X |
-| Camera | Slow drag on the right side | Q / E, or drag mouse | Right stick |
+| Camera | Drag on the right side | Q / E, or drag mouse | Right stick |
 | Focus mode | Eye icon | F | Back / View |
 | Pause / Settings | ❚❚ icon or two-finger tap | Esc | Start |
 | Skip current goal | Quest card → Skip | Tab | Pause menu → Skip goal |

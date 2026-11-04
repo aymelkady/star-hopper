@@ -63,6 +63,9 @@ async function open(browser, viewport, { tutorialSeen = true } = {}) {
   await page.goto(URL_);
   await page.waitForFunction(() => window.__game && document.getElementById('btn-play'), null, { timeout: 20000 });
   if (process.env.DEBUG_GEST) await page.evaluate(() => { window.__dbg = true; });
+  // this suite covers the Pro (gesture-only, timed 1-2-3 combo) layout; Simple has its own checks
+  // in smoke.spec.mjs (touch pass) and movement.spec.mjs
+  await page.evaluate(() => window.__game.state.setSetting('moveMode', 'pro'));
   await page.tap('#btn-play'); await page.tap('#slot-1');
   await page.waitForFunction(() => window.__game.ready === true, null, { timeout: 15000 });
   await page.evaluate(() => {
@@ -130,7 +133,8 @@ async function run(browser, name, viewport) {
 
   // --- DOM: no gameplay buttons ---
   const dom = await page.evaluate(() => ({
-    buttons: ['#touch-jump', '#touch-long', '#touch-pound', '#touch-stick', '.touch-buttons'].filter(s => document.querySelector(s)),
+    buttons: ['#touch-jump', '#touch-long', '#touch-pound', '#touch-stick', '.touch-buttons'].filter(s => document.querySelector(s))
+      .concat(getComputedStyle(document.getElementById('gs-jump')).display !== 'none' ? ['#gs-jump (visible)'] : []),
     container: !!document.getElementById('touch-controls'),
     help: window.__game.touch.GESTURE_HELP,
   }));
@@ -383,6 +387,7 @@ async function tutorial(browser) {
   ok(await page.evaluate(() => window.__game.plugins.objectives.introsShown === 1), 'reopening from Controls does not replay the quest intro');
   await page.reload();
   await page.waitForFunction(() => window.__game && document.getElementById('btn-play'));
+  ok(await page.evaluate(() => window.__game.state.settings.moveMode) === 'pro', 'moveMode pro persisted across reload');
   await page.tap('#btn-play'); await page.tap('#slot-1');
   await page.waitForFunction(() => window.__game.ready === true);
   await lowRes(page, true);

@@ -1,5 +1,10 @@
 /*
- * Touch layer (iPad / Android) — GESTURE-ONLY, no gameplay buttons (DESIGN.md §5.1).
+ * Touch layer (iPad / Android).  Two layouts, picked by settings.moveMode (DESIGN.md §5.5):
+ *   Simple (default): a VISIBLE dynamic stick (left 45 %, 110 px ring, 50 px knob, 55 % opacity;
+ *     a faint ring rests bottom-left as a hint) + a round Jump button bottom-right (#gs-jump,
+ *     88 px, 55 % opacity).  The button is the only gameplay button; everything below still
+ *     works on the right side outside it (a plain tap also jumps).
+ *   Pro: the original GESTURE-ONLY layout, no gameplay buttons (DESIGN.md §5.1).
  * Produces the same abstract inputs as keyboard/gamepad; input.js merges touch.state +
  * touch.takeLatch() into input.actions every physics step.
  *
@@ -41,11 +46,26 @@ export const GESTURE = {
   TWO_UP_MS: 250,       // …and both fingers up within this of the first touch-down
   LONG_MIN_SPEED: 4,    // m/s: side swipe only long-jumps when Pip runs faster than this
   STREAK_MS: 150,
+  // Simple layout (DESIGN.md §5.5)
+  SIMPLE_ZONE: 0.45,    // stick zone = left 45 % of the width (Pro: left half)
+  SIMPLE_RING: 110, SIMPLE_KNOB: 50, SIMPLE_STICK_MAX: 45, SIMPLE_OPACITY: 0.55, SIMPLE_IDLE_OPACITY: 0.28,
+  JUMP_BTN: 88, JUMP_BTN_BOTTOM: 16, JUMP_BTN_RIGHT: 28, JUMP_BTN_SLOP: 10, // px (slop = extra hit margin)
 };
 const G = GESTURE;
 
-/** Controls-card rows for touch (≤ 4 words per field). Rendered by the UI. */
-export const GESTURE_HELP = [
+/** Controls-card rows for touch (≤ 4 words per field), Simple layout (the default). */
+export const GESTURE_HELP_SIMPLE = [
+  { icon: '🕹️', title: 'Move', text: 'Drag left side' },
+  { icon: '⬆', title: 'Jump', text: 'Tap ⬆ button' },
+  { icon: '⭐', title: 'Double jump', text: 'Tap ⬆ in air' },
+  { icon: '🦘', title: 'Auto-jump', text: 'Walk into ledges' },
+  { icon: '👇', title: 'Ground pound', text: 'Swipe down in air' },
+  { icon: '👉', title: 'Long jump', text: 'Run, then swipe sideways' },
+  { icon: '🔄', title: 'Look around', text: 'Drag right side' },
+  { icon: '✌️', title: 'Pause', text: 'Two-finger tap' },
+];
+/** Pro layout: gesture-only (DESIGN.md §5.1). */
+export const GESTURE_HELP_PRO = [
   { icon: '👈', title: 'Move', text: 'Drag left side' },
   { icon: '👆', title: 'Jump', text: 'Tap right side' },
   { icon: '⭐', title: 'Double jump', text: 'Tap again on landing' },
@@ -54,8 +74,15 @@ export const GESTURE_HELP = [
   { icon: '🔄', title: 'Look around', text: 'Slow drag right side' },
   { icon: '✌️', title: 'Pause', text: 'Two-finger tap' },
 ];
+export const GESTURE_HELP = GESTURE_HELP_SIMPLE;
+export const gestureHelp = mode => (mode === 'pro' ? GESTURE_HELP_PRO : GESTURE_HELP_SIMPLE);
 
-const TUTORIAL = [
+const TUTORIAL_SIMPLE = [
+  { cls: 'gs-a-drag', caption: 'Drag left: move' },
+  { cls: 'gs-a-btn', caption: 'Tap ⬆: jump', btn: true },
+  { cls: 'gs-a-btn2', caption: 'Tap ⬆ again in air: double jump', btn: true },
+];
+const TUTORIAL_PRO = [
   { cls: 'gs-a-drag', caption: 'Drag left: move' },
   { cls: 'gs-a-tap', caption: 'Tap right: jump' },
   { cls: 'gs-a-down', caption: 'Swipe down: pound' },
@@ -70,6 +97,18 @@ const CSS = `
 #gs-stick .gs-ring { position: absolute; width: ${G.STICK_RING}px; height: ${G.STICK_RING}px; left: -${G.STICK_RING / 2}px; top: -${G.STICK_RING / 2}px;
   border-radius: 50%; border: 3px solid #fff; background: rgba(255,255,255,.12); box-sizing: border-box; }
 #gs-stick .gs-dot { position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 50%; background: #fff; transform: translate(-50%,-50%); }
+#touch-controls.simple #gs-stick.idle { opacity: ${G.SIMPLE_IDLE_OPACITY}; }
+#touch-controls.simple #gs-stick.on { opacity: ${G.SIMPLE_OPACITY}; }
+#touch-controls.simple #gs-stick .gs-ring { width: ${G.SIMPLE_RING}px; height: ${G.SIMPLE_RING}px; left: -${G.SIMPLE_RING / 2}px; top: -${G.SIMPLE_RING / 2}px;
+  background: rgba(20,14,40,.25); box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+#touch-controls.simple #gs-stick .gs-dot { width: ${G.SIMPLE_KNOB}px; height: ${G.SIMPLE_KNOB}px; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+#gs-jump { position: absolute; width: ${G.JUMP_BTN}px; height: ${G.JUMP_BTN}px; padding: 0; margin: 0; border-radius: 50%;
+  right: calc(${G.JUMP_BTN_RIGHT}px + env(safe-area-inset-right, 0px)); bottom: calc(${G.JUMP_BTN_BOTTOM}px + env(safe-area-inset-bottom, 0px));
+  border: 3px solid #fff; background: rgba(20,14,40,.35); color: #fff; font: 900 42px/1 var(--font, system-ui, sans-serif);
+  opacity: ${G.SIMPLE_OPACITY}; box-shadow: 0 3px 10px rgba(0,0,0,.3); pointer-events: none; display: grid; place-items: center;
+  transition: transform .06s ease-out, opacity .06s ease-out, background-color .06s; -webkit-tap-highlight-color: transparent; }
+#gs-jump.pressed { transform: scale(.9); opacity: .85; background: rgba(255,216,74,.55); }
+#touch-controls:not(.simple) #gs-jump { display: none; }
 .gs-fx { position: absolute; left: 0; top: 0; pointer-events: none; opacity: 0; will-change: transform, opacity; }
 .gs-streak { width: 140px; height: 12px; margin: -6px 0 0 0; border-radius: 6px; transform-origin: 0 50%;
   background: linear-gradient(90deg, rgba(255,255,255,0), #fff 70%, #fff); box-shadow: 0 0 8px rgba(255,255,255,.8); }
@@ -92,13 +131,24 @@ const CSS = `
 .gs-a-tap .gs-hand { left: 75%; animation: gs-tap 1.1s ease-in-out infinite; }
 .gs-a-down .gs-hand { left: 75%; animation: gs-down 1.3s ease-in infinite; }
 .gs-a-side .gs-hand { left: 75%; animation: gs-side 1.3s ease-in infinite; }
+.gs-btn { position: absolute; right: 12px; bottom: 10px; width: 46px; height: 46px; border-radius: 50%; border: 3px solid #fff; background: rgba(255,255,255,.18);
+  box-sizing: border-box; display: grid; place-items: center; font-size: 24px; font-weight: 900; }
+.gs-a-btn .gs-hand, .gs-a-btn2 .gs-hand { left: auto; right: -4px; top: auto; bottom: -18px; transform: none; }
+.gs-a-btn .gs-hand { animation: gs-btap 1.1s ease-in-out infinite; }
+.gs-a-btn2 .gs-hand { animation: gs-btap2 1.4s ease-in-out infinite; }
+.gs-a-btn .gs-btn { animation: gs-bpress 1.1s ease-in-out infinite; }
+.gs-a-btn2 .gs-btn { animation: gs-bpress2 1.4s ease-in-out infinite; }
+@keyframes gs-btap { 0%,60%,100% { transform: translate(0,0) scale(1); } 30% { transform: translate(0,8px) scale(.85); } }
+@keyframes gs-btap2 { 0%,45%,100% { transform: translate(0,0) scale(1); } 15%,35% { transform: translate(0,8px) scale(.85); } 25% { transform: translate(0,0) scale(1); } }
+@keyframes gs-bpress { 0%,60%,100% { background: rgba(255,255,255,.18); } 30% { background: rgba(255,216,74,.7); } }
+@keyframes gs-bpress2 { 0%,45%,100% { background: rgba(255,255,255,.18); } 15%,35% { background: rgba(255,216,74,.7); } 25% { background: rgba(255,255,255,.18); } }
 @keyframes gs-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes gs-pulse { 50% { opacity: .45; } }
 @keyframes gs-drag { 0%,100% { transform: translate(-90%,-30%); } 50% { transform: translate(-10%,-60%); } }
 @keyframes gs-tap { 0%,60%,100% { transform: translate(-50%,-30%) scale(1); } 30% { transform: translate(-50%,-20%) scale(.82); } }
 @keyframes gs-down { 0% { transform: translate(-50%,-90%); opacity: 0; } 15% { opacity: 1; } 70% { transform: translate(-50%,10%); opacity: 1; } 100% { transform: translate(-50%,10%); opacity: 0; } }
 @keyframes gs-side { 0% { transform: translate(-110%,-30%); opacity: 0; } 15% { opacity: 1; } 70% { transform: translate(10%,-30%); opacity: 1; } 100% { transform: translate(10%,-30%); opacity: 0; } }
-html.reduce-motion .gs-hand { animation-duration: 3.6s !important; }
+html.reduce-motion .gs-hand, html.reduce-motion .gs-btn { animation-duration: 3.6s !important; }
 @media (prefers-reduced-motion: reduce) { .gs-hand { animation-duration: 3.6s !important; } }
 @media (max-height: 430px), (max-width: 960px) { .gs-cards { gap: 10px; } .gs-card { width: 180px; } .gs-pad { width: 150px; height: 92px; } .gs-cap { font-size: 19px; } #gs-tutorial h2 { font-size: 26px; margin-bottom: 8px; } .gs-hint { margin-top: 10px; } }
 `;
@@ -144,9 +194,34 @@ export function createTouch(root = document.body) {
   }
   let el = document.getElementById('touch-controls');
   if (!el) { el = document.createElement('div'); el.id = 'touch-controls'; root.appendChild(el); }
-  el.innerHTML = '<div id="gs-stick"><div class="gs-ring"></div><div class="gs-dot"></div></div>';
+  el.innerHTML = '<div id="gs-stick"><div class="gs-ring"></div><div class="gs-dot"></div></div>' +
+    '<button id="gs-jump" type="button" tabindex="-1" aria-label="Jump">⬆</button>';
   el.hidden = !IS_TOUCH;
-  const stickEl = el.querySelector('#gs-stick'), dot = stickEl.querySelector('.gs-dot');
+  const stickEl = el.querySelector('#gs-stick'), dot = stickEl.querySelector('.gs-dot'), jumpBtn = el.querySelector('#gs-jump');
+  // ---- layout mode (settings.moveMode; Simple is the default) ----
+  const isSimple = () => settings().moveMode !== 'pro';
+  let simple = null;
+  function stickHome() { // Simple: the resting hint sits bottom-left, clear of the break ring
+    if (!simple || stickId !== null) return;
+    const h = typeof window !== 'undefined' ? window.innerHeight : 600;
+    stickEl.style.left = `${Math.round(G.SIMPLE_RING / 2 + 52)}px`; stickEl.style.top = `${Math.round(h - G.SIMPLE_RING / 2 - 52)}px`;
+    dot.style.transform = 'translate(-50%,-50%)';
+  }
+  function refreshMode() {
+    const v = isSimple(); if (v === simple) return;
+    simple = v; el.classList.toggle('simple', v); stickEl.classList.toggle('idle', v);
+    if (tut && !tut.hidden) renderTutorial();
+    stickHome();
+  }
+  if (typeof window !== 'undefined') window.addEventListener('resize', () => stickHome());
+  const stickMax = () => (simple ? G.SIMPLE_STICK_MAX : G.STICK_MAX);
+  let btnId = null;
+  function onButton(x, y) {
+    if (!simple || el.hidden) return false;
+    const r = jumpBtn.getBoundingClientRect(); if (!r.width) return false;
+    const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    return Math.hypot(x - cx, y - cy) <= r.width / 2 + G.JUMP_BTN_SLOP;
+  }
   const mkPool = cls => Array.from({ length: 4 }, () => { const d = document.createElement('div'); d.className = `gs-fx ${cls}`; el.appendChild(d); return d; });
   const streaks = mkPool('gs-streak'), rings = mkPool('gs-ring-fx');
   let streakI = 0, ringI = 0;
@@ -301,12 +376,12 @@ export function createTouch(root = document.body) {
   const capture = e => { try { el.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ } };
 
   function setStick(dx, dy) {
-    const L = Math.hypot(dx, dy);
-    if (L > G.STICK_MAX) { dx *= G.STICK_MAX / L; dy *= G.STICK_MAX / L; }
+    const L = Math.hypot(dx, dy), MAX = stickMax();
+    if (L > MAX) { dx *= MAX / L; dy *= MAX / L; }
     dot.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-    const m = L <= G.STICK_DEAD ? 0 : Math.min(1, (L - G.STICK_DEAD) / (G.STICK_MAX - G.STICK_DEAD));
-    state.mx = L > 0 ? (dx / Math.min(L, G.STICK_MAX)) * m : 0;
-    state.my = L > 0 ? (-dy / Math.min(L, G.STICK_MAX)) * m : 0;
+    const m = L <= G.STICK_DEAD ? 0 : Math.min(1, (L - G.STICK_DEAD) / (MAX - G.STICK_DEAD));
+    state.mx = L > 0 ? (dx / Math.min(L, MAX)) * m : 0;
+    state.my = L > 0 ? (-dy / Math.min(L, MAX)) * m : 0;
   }
 
   el.addEventListener('pointerdown', e => {
@@ -315,7 +390,13 @@ export function createTouch(root = document.body) {
     const p = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: t, samples: [{ x: e.clientX, y: e.clientY, t }],
       maxTravel: 0, kind: 'pending', multi: false, lx: e.clientX, ly: e.clientY };
     if (e.pointerType === 'mouse') { p.kind = 'orbit'; ptrs.set(p.id, p); return; } // hybrid device: mouse drag orbits
-    const leftHalf = e.clientX < window.innerWidth / 2;
+    refreshMode();
+    if (onButton(e.clientX, e.clientY)) {    // Simple: the Jump button (held while the finger stays down)
+      p.kind = 'button'; btnId = p.id; ptrs.set(p.id, p);
+      latch.jump = true; state.jumpHeld = true; jumpBtn.classList.add('pressed'); buzz();
+      return;
+    }
+    const leftHalf = e.clientX < window.innerWidth * (simple ? G.SIMPLE_ZONE : 0.5);
     if (leftHalf && stickId === null) {
       p.kind = 'stick'; stickId = p.id; sx = e.clientX; sy = e.clientY;
       stickEl.style.left = sx + 'px'; stickEl.style.top = sy + 'px';
@@ -348,6 +429,7 @@ export function createTouch(root = document.body) {
     }
     p.x = e.clientX; p.y = e.clientY;
     p.maxTravel = Math.max(p.maxTravel, travel(p));
+    if (p.kind === 'button') return;
     if (p.kind === 'stick') { setStick(p.x - sx, p.y - sy); checkGroup(t); return; }
     if (p.kind === 'orbit') {
       state.camDx += p.x - p.lx; state.camDy += p.y - p.ly; p.lx = p.x; p.ly = p.y; return;
@@ -361,12 +443,13 @@ export function createTouch(root = document.body) {
   function lift(e, cancelled) {
     const p = ptrs.get(e.pointerId); if (!p) return;
     const t = tsOf(e); stamp(t);
+    if (p.kind === 'button') { btnId = null; jumpBtn.classList.remove('pressed'); ptrs.delete(p.id); return; }
     if (!cancelled && p.kind !== 'stick' && p.kind !== 'orbit') {
       p.x = e.clientX; p.y = e.clientY; p.maxTravel = Math.max(p.maxTravel, travel(p));
       p.samples.push({ x: p.x, y: p.y, t });
       evaluate(p, t, true);
     }
-    if (p.kind === 'stick') { stickId = null; state.mx = state.my = 0; stickEl.classList.remove('on'); }
+    if (p.kind === 'stick') { stickId = null; state.mx = state.my = 0; stickEl.classList.remove('on'); stickHome(); }
     if (p.crouch) state.crouchHeld = false;
     if (p.pound) state.poundHeld = false;
     if (p.long) state.longHeld = false;
@@ -391,28 +474,32 @@ export function createTouch(root = document.body) {
   el.addEventListener('contextmenu', e => e.preventDefault());
 
   function resetAll() {
-    ptrs.clear(); if (group) clearTimeout(group.timer); group = null; stickId = null;
+    ptrs.clear(); if (group) clearTimeout(group.timer); group = null; stickId = null; btnId = null;
     state.mx = state.my = 0; state.crouchHeld = state.poundHeld = state.longHeld = false;
-    stickEl.classList.remove('on');
+    stickEl.classList.remove('on'); jumpBtn.classList.remove('pressed'); stickHome();
   }
 
   // ---- first-play tutorial ----
   let tut = null, tutAuto = false;
   const dismissFns = new Set();
+  function renderTutorial() {
+    const cards = isSimple() ? TUTORIAL_SIMPLE : TUTORIAL_PRO;
+    tut.innerHTML = `<div><h2>How to move</h2><div class="gs-cards">${cards.map(c =>
+      `<div class="gs-card ${c.cls}"><div class="gs-pad">${c.btn ? '<span class="gs-btn" aria-hidden="true">⬆</span>' : ''}<span class="gs-hand" aria-hidden="true">👆</span></div><div class="gs-cap">${c.caption.replace(': ', ':<br> <b>')}</b></div></div>`).join('')
+    }</div><div class="gs-hint">Tap to play!</div></div>`;
+  }
   function showTutorial(auto = false) {
     if (!tut) {
       tut = document.createElement('div');
       tut.id = 'gs-tutorial';
       tut.setAttribute('role', 'dialog'); tut.setAttribute('aria-label', 'How to move');
-      tut.innerHTML = `<div><h2>How to move</h2><div class="gs-cards">${TUTORIAL.map(c =>
-        `<div class="gs-card ${c.cls}"><div class="gs-pad"><span class="gs-hand" aria-hidden="true">👆</span></div><div class="gs-cap">${c.caption.replace(': ', ':<br> <b>')}</b></div></div>`).join('')
-      }</div><div class="gs-hint">Tap to play!</div></div>`;
       const stop = e => { e.preventDefault(); e.stopPropagation(); };
       tut.addEventListener('pointerdown', stop);
       tut.addEventListener('pointermove', stop);
       tut.addEventListener('pointerup', e => { stop(e); if (now() - tut._t0 >= 1500) hideTutorial(true); });
       document.body.appendChild(tut);
     }
+    refreshMode(); renderTutorial();
     tutAuto = auto;
     tut._t0 = now(); tut.hidden = false; tut.classList.remove('ready');
     clearTimeout(tut._rt); tut._rt = setTimeout(() => tut && tut.classList.add('ready'), 1500);
@@ -432,19 +519,23 @@ export function createTouch(root = document.body) {
   }
 
   return {
-    el, state, latch, GESTURE_HELP,
+    el, state, latch, jumpButton: jumpBtn,
+    get GESTURE_HELP() { return gestureHelp(isSimple() ? 'simple' : 'pro'); },
+    get simple() { refreshMode(); return simple; },
     /** Optional explicit wiring (else window.__game is used lazily). */
     attach(b) { bound = b; },
     setContext(c) { ctx = c || ctx; },
     takeLatch() {
       const r = { ...latch };
       latch.jump = latch.longJump = latch.pound = latch.pause = false;
-      state.jumpHeld = now() < jumpHoldUntil;
+      state.jumpHeld = now() < jumpHoldUntil || btnId !== null;
+      refreshMode();
       return r;
     },
     takeCamera() { const r = { dx: state.camDx, dy: state.camDy }; state.camDx = state.camDy = 0; return r; },
     show(v) {
       el.hidden = !(v && IS_TOUCH);
+      refreshMode();
       if (!v) { resetAll(); if (tutAuto) hideTutorial(false); return; } // pause / stop closes a first-play tutorial unseen
     },
     /** opts.firstPlay: closes (unseen) when the touch layer hides, e.g. on pause; objectives re-opens it */
@@ -452,7 +543,7 @@ export function createTouch(root = document.body) {
     onTutorialDismissed(fn) { dismissFns.add(fn); return () => dismissFns.delete(fn); },
     hideTutorial: () => hideTutorial(true),
     /** test/debug snapshot of the recogniser */
-    debug() { return { pointers: [...ptrs.values()].map(p => ({ id: p.id, kind: p.kind, dir: p.dir, multi: p.multi })), group: group ? [...group.ids] : null, stickId, latch: { ...latch } }; },
+    debug() { return { pointers: [...ptrs.values()].map(p => ({ id: p.id, kind: p.kind, dir: p.dir, multi: p.multi })), group: group ? [...group.ids] : null, stickId, btnId, simple, latch: { ...latch } }; },
     get tutorialOpen() { return !!(tut && !tut.hidden); },
   };
 }

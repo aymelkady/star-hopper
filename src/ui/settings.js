@@ -2,7 +2,7 @@
  * Settings screen (R6 / R9 / R12, A7).  Reachable from the pause menu (#btn-settings) and the title
  * screen (#btn-settings-title).  Big segmented controls + sliders, icon + ≤3 words, ≥44 px targets.
  * Every change -> state.setSetting(key, value) (persisted, emits settings:changed).
- * Keys: breakMinutes (0 = off), helperMode, focusMode, reduceMotion, cameraSpeed (0.6/1/1.5),
+ * Keys: moveMode ('simple' | 'pro', first row), autoJump (touch only), breakMinutes (0 = off), helperMode, focusMode, reduceMotion, cameraSpeed (0.6/1/1.5),
  *       invertY, masterVolume ("Sound", 0..1), musicVolume (0..1), haptics (touch only).
  * Also applies html.reduce-motion (core/touch.js reads settings.haptics itself).
  * API: open(returnTo)
@@ -13,7 +13,9 @@ const SEG = (key, icon, label, opts) => ({ type: 'seg', key, icon, label, opts }
 const SLIDE = (key, icon, label) => ({ type: 'slide', key, icon, label });
 const ROWS = isTouch => [
   { type: 'head', label: '🎮 Play' },
-  SEG('helperMode', '🛟', 'Helper mode', [[true, 'On'], [false, 'Pro']]),
+  SEG('moveMode', '🎮', 'Controls', [['simple', 'Simple'], ['pro', 'Pro']]),
+  ...(isTouch ? [SEG('autoJump', '🦘', 'Auto-jump', [[true, 'On'], [false, 'Off']])] : []),
+  SEG('helperMode', '🛟', 'Helper mode', [[true, 'On'], [false, 'Off']]),
   SEG('focusMode', '👁', 'Focus mode', [[false, 'Off'], [true, 'On']]),
   SEG('reduceMotion', '🌀', 'Reduce motion', [[false, 'Off'], [true, 'On']]),
   SEG('cameraSpeed', '🎥', 'Camera speed', [[0.6, 'Slow'], [1, 'Normal'], [1.5, 'Fast']]),

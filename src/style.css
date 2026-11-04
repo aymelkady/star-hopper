@@ -388,3 +388,5 @@ body.hud-compact .fp-chip { top: var(--qc-top); bottom: auto; height: var(--qc-h
 html.reduce-motion body.hud-compact .hud-left > .chip.peek { animation: none; }
 body.hud-compact .fp-chip.pop { animation-name: fp-chip-pop; } /* keep the centring translate while it pops */
 @keyframes fp-chip-pop { 0% { transform: translateX(-50%) scale(1); } 40% { transform: translateX(-50%) scale(1.08); } 100% { transform: translateX(-50%) scale(1); } }
+/* Controls card: which movement mode the rows describe (Settings -> Controls: Simple / Pro) */
+.controls .ctl-mode { font-size: 20px; font-weight: 800; padding: 2px 10px; margin-left: 6px; border-radius: 999px; background: rgba(255,216,74,.25); vertical-align: middle; }

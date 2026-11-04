@@ -11,7 +11,8 @@
     "test:fx": "node test/audio-fx.spec.mjs",
     "test:gestures": "node test/gestures.spec.mjs",
     "test:focus": "node test/focusplay.spec.mjs",
-    "test:camera": "node test/camera.spec.mjs"
+    "test:camera": "node test/camera.spec.mjs",
+    "test:move": "node test/movement.spec.mjs"
   },
   "license": "MIT",
   "devDependencies": {

@@ -184,6 +184,7 @@ async function ipadGating(browser) {
   ok(a.has && a.unlocked, `AudioContext created on first tap (state: ${a.state})`);
   const coinId = await ev(page, () => window.__game.listPickups().find(p => p.type === 'coin').id);
   await ev(page, id => window.__game.collect(id), coinId);
+  await frames(page, 2); // fx.count() is refreshed by the particle update on the next rendered frame
   ok((await sfx(page)).includes('coin') && (await ev(page, () => window.__game.fx.count())) > 0, 'coin -> sound + particles on iPad');
   ok(errors.length === 0, `no console errors${errors.length ? ':\n    ' + errors.join('\n    ') : ''}`);
   await context.close();

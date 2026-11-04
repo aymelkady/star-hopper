@@ -9,20 +9,31 @@ Works on desktop (keyboard or gamepad), iPad (Safari) and Android (Chrome) with 
 
 ## Controls
 
-| Action | Keyboard | Gamepad | Touch |
-|---|---|---|---|
-| Move | `W A S D` (or arrow keys) | Left stick / d-pad | Drag on the left half |
-| Jump (hold = higher, 3 in a row = triple jump) | `Space` | A | Tap the right half |
-| Long jump (while running) | `Shift` + `Space` | B | Swipe sideways |
-| Ground pound (in the air) | `E`, `X`, `C` or `Ctrl` | X | Swipe down |
-| Crouch (on the ground; crouch + jump = long jump or backflip) | hold `C`, `X` or `Ctrl` | hold X | Swipe down and hold |
-| Camera | `Q` / `E`, arrow keys (when WASD moves), mouse drag | Right stick | Slow drag on the right half |
-| Camera behind Pip | `R` | Y | |
-| Focus mode | `F` | View / Back | Eye button (top right) |
-| Pause / Settings | `Esc` or `P` | Start | Pause button (top right) or two-finger tap |
-| Skip current goal | `Tab` | Pause menu → Skip goal | **Skip ›** on the quest card |
+Two control styles, chosen in **Settings → 🎮 Controls**:
 
-Wall kick: touch a wall in the air and press Jump.
+- **Simple** (default, Roblox-style): Pip runs at one steady speed, starts and stops instantly,
+  turns instantly and walks up small steps. One tap = one fixed jump; tap again in the air =
+  **double jump** (that is all any star needs). On touch there is a visible joystick on the left,
+  a round **⬆ Jump** button bottom-right, and **auto-jump** onto knee-high ledges (Settings → Auto-jump).
+- **Pro**: the original Mario-64-style moves: speed builds up, hold Jump for higher, and
+  jump again just as you land for a double then a triple jump. Touch is gesture-only (no buttons).
+
+| Action | Keyboard | Gamepad | Touch (Simple) | Touch (Pro) |
+|---|---|---|---|---|
+| Move | `W A S D` (or arrow keys) | Left stick / d-pad | Drag on the left side (joystick) | Drag on the left half |
+| Jump | `Space` | A | Tap **⬆** (or tap the right side) | Tap the right half |
+| Double jump | Simple: `Space` again in the air · Pro: `Space` on landing (3 in a row = triple) | A, same timing | Tap **⬆** again in the air | Tap again on landing |
+| Long jump (while running) | `Shift` + `Space` | B | Swipe sideways | Swipe sideways |
+| Ground pound (in the air) | `E`, `X`, `C` or `Ctrl` | X | Swipe down | Swipe down |
+| Crouch (on the ground; crouch + jump = long jump or backflip) | hold `C`, `X` or `Ctrl` | hold X | Swipe down and hold | Swipe down and hold |
+| Camera | `Q` / `E`, arrow keys (when WASD moves), mouse drag | Right stick | Drag on the right side | Slow drag on the right half |
+| Camera behind Pip | `R` | Y | | |
+| Focus mode | `F` | View / Back | Eye button (top right) | Eye button (top right) |
+| Pause / Settings | `Esc` or `P` | Start | ❚❚ (top right) or two-finger tap | ❚❚ (top right) or two-finger tap |
+| Skip current goal | `Tab` | Pause menu → Skip goal | **Skip ›** on the quest card | **Skip ›** on the quest card |
+
+Wall kick: touch a wall in the air and press Jump (in Simple mode, after the double jump is used).
+Long jump and ground pound are bonuses in Simple mode; no star needs them.
 
 ## Run it
 
@@ -75,8 +86,14 @@ no game-over), and has a built-in break timer.
    The **Parents** part of the screen has:
    - **Session length**: 10 / 15 / 20 / 30 minutes. The timer ring in the corner shows time left.
      The game warns at 5 min and 1 min, then shows a 60-second stretch-break screen.
+   - **🎮 Controls: Simple / Pro** (top of the list; **Simple** is the default). Simple plays
+     like Roblox: steady speed, instant stop, one jump button plus a double jump in the air,
+     and auto-jump onto small ledges on tablets. Pro is the trickier original style (speed
+     build-up, hold for higher jumps, timed triple jump) for kids who want a challenge.
+   - **Auto-jump** (tablets / phones, Simple only, on by default): walking into a knee-high
+     ledge hops up it automatically.
    - **Helper mode** (on by default): more forgiving jumps and a coin magnet. Turn off for
-     kids who want "Pro mode".
+     an extra challenge.
    - **Focus mode** (F key): dims everything except Pip, the path, and the current goal.
      Try it if your child gets pulled toward side details.
    - **Sound / music** sliders, **Reduce motion**, **Camera speed**, **Invert camera**, and
@@ -103,14 +120,18 @@ no game-over), and has a built-in break timer.
 - **Save & stop** is in the pause menu. It always saves. Closing the tab also keeps progress.
 
 ### Controls
+Shown for the default **Simple** style. In **Pro** there is no Jump button on touch: tap the right side to jump.
+
 | Action | Touch (iPad / Android) | Keyboard | Gamepad |
 |---|---|---|---|
-| Move | Drag on the left side | W A S D or arrows | Left stick |
-| Jump (tap again on landing for higher jumps) | Tap the right side | Space | A |
+| Move | Drag on the left side (a joystick appears) | W A S D or arrows | Left stick |
+| Jump | Tap the round **⬆** button (bottom right) or the right side | Space | A |
+| Double jump (Simple) | Tap **⬆** again in the air | Space again in the air | A again in the air |
+| Double / triple jump (Pro) | Tap the right side again just as Pip lands | Space on landing | A on landing |
 | Long jump (while running) | Swipe sideways | Shift + Space | B |
 | Ground pound (in the air) | Swipe down | E | X |
 | Crouch (crouch + jump = backflip) | Swipe down and hold | hold C or Ctrl | hold X |
-| Camera | Slow drag on the right side | Q / E, or drag mouse | Right stick |
+| Camera | Drag on the right side | Q / E, or drag mouse | Right stick |
 | Focus mode | Eye icon | F | Back / View |
 | Pause / Settings | ❚❚ icon or two-finger tap | Esc | Start |
 | Skip current goal | Quest card → Skip | Tab | Pause menu → Skip goal |

@@ -13,6 +13,8 @@ const SAVE_KEY = n => `starhopper.save.${n}`;
 const SETTINGS_KEY = 'starhopper.settings';
 
 export const DEFAULT_SETTINGS = {
+  moveMode: 'simple',     // 'simple' (Roblox-like, default) | 'pro' (timed combo moveset) - DESIGN.md §5.5
+  autoJump: true,         // simple mode, touch only: walk into a 0.45-1.6 m ledge = jump
   helperMode: true,       // coyote time, jump buffer, coin magnet ("Pro mode" = false)
   invertY: false,
   cameraSpeed: 1,
@@ -72,11 +74,18 @@ function sanitize(d, slot, settings) {
   return out;
 }
 
+// Old / hand-edited settings: anything but 'pro' is Simple (the default).
+function normalizeSettings(s) {
+  if (s.moveMode !== 'pro') s.moveMode = 'simple';
+  if (typeof s.autoJump !== 'boolean') s.autoJump = true;
+  return s;
+}
+
 export function createState(events) {
   const st = {
     slot: 0,
     data: null,
-    settings: { ...DEFAULT_SETTINGS, ...(readJSON(SETTINGS_KEY) || {}) },
+    settings: normalizeSettings({ ...DEFAULT_SETTINGS, ...(readJSON(SETTINGS_KEY) || {}) }),
     _coinSet: new Set(),
 
     listSlots() {
